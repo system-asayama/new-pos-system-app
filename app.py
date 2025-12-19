@@ -15085,6 +15085,94 @@ def api_sales_hourly():
 
 
 # =========================================================
+# 店員呼び出しAPI
+# =========================================================
+# 店員呼び出し状態を保持するグローバル変数（簡易実装）
+_staff_calls = []  # [{"table_no": "1", "timestamp": 1234567890, "store_id": 1}]
+_staff_calls_lock = threading.Lock()
+
+@app.route("/api/staff_call", methods=["POST"])
+def api_staff_call():
+    """
+    お客様が店員を呼び出すAPI
+    POST JSON:
+      { "token": "<qr token>", "table_no": "<テーブル番号>" }
+    
+    レスポンス:
+      { "ok": true, "table_no": "<テーブル番号>" }
+    """
+    global _staff_calls
+    try:
+        data = request.get_json(force=True) or {}
+        token = data.get("token", "")
+        table_no = data.get("table_no", "不明")
+        store_id = None
+        
+        # トークン検証（既存のQRトークン検証ロジックを使用）
+        s = SessionLocal()
+        try:
+            # QRトークンからテーブル情報を取得
+            qr = s.query(QrToken).filter(QrToken.token == token).first()
+            if qr and qr.table_id:
+                table = s.get(TableSeat, qr.table_id)
+                if table:
+                    table_no = getattr(table, "テーブル番号", table_no)
+                    store_id = getattr(table, "store_id", None) or getattr(qr, "store_id", None)
+        except Exception as e:
+            app.logger.warning(f"[api_staff_call] token validation warning: {e}")
+        finally:
+            s.close()
+        
+        # 呼び出しを記録
+        with _staff_calls_lock:
+            _staff_calls.append({
+                "table_no": table_no,
+                "timestamp": int(time.time()),
+                "store_id": store_id
+            })
+            # 古い呼び出しを削除（60秒以上前）
+            cutoff = int(time.time()) - 60
+            _staff_calls = [c for c in _staff_calls if c["timestamp"] > cutoff]
+        
+        # ログに記録
+        app.logger.info(f"[STAFF_CALL] テーブル {table_no} から店員呼び出し")
+        
+        return jsonify({"ok": True, "table_no": table_no})
+    
+    except Exception as e:
+        app.logger.error(f"[api_staff_call] error: {e}", exc_info=True)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/staff_call/poll", methods=["GET"])
+@require_any
+def api_staff_call_poll():
+    """
+    KDSが店員呼び出しをポーリングするAPI
+    レスポンス:
+      { "ok": true, "calls": [{"table_no": "1", "timestamp": 1234567890}] }
+    """
+    global _staff_calls
+    try:
+        sid = current_store_id()
+        since = int(request.args.get("since", "0"))
+        
+        with _staff_calls_lock:
+            # 店舗IDでフィルタリング
+            calls = [
+                {"table_no": c["table_no"], "timestamp": c["timestamp"]}
+                for c in _staff_calls
+                if c["timestamp"] > since and (sid is None or c["store_id"] == sid)
+            ]
+        
+        return jsonify({"ok": True, "calls": calls})
+    
+    except Exception as e:
+        app.logger.error(f"[api_staff_call_poll] error: {e}", exc_info=True)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# =========================================================
 # メニューオプション取得API
 # =========================================================
 @app.route("/api/menu/<int:menu_id>/options")

@@ -3,8 +3,14 @@
 <h2>KDS（キッチン・ドリンカー）</h2>
 
 <!-- ▼ カテゴリフィルタ（最初は全て未選択） -->
-<div id="cat-bar" style="display:flex; flex-wrap:wrap; gap:8px; margin:6px 0 12px;">
+<div id="cat-bar" style="display:flex; flex-wrap:wrap; gap:8px; margin:6px 0 12px; align-items:center;">
   <button type="button" id="btn-all" class="cat-btn all" data-id="__ALL__">すべて</button>
+  <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+    <label style="margin:0; display:flex; align-items:center; gap:4px; font-size:14px;">
+      <input type="checkbox" id="sound-toggle" checked>
+      <span>通知音</span>
+    </label>
+  </div>
 </div>
 <style>
   .cat-btn{ padding:6px 10px; border:1px solid #d1d5db; border-radius:8px; background:#fff; cursor:pointer; }
@@ -283,6 +289,58 @@ async function fetchAndUpdateKds(triggerSoundOnNew = true){
   }
 }
 
+/* ====== 店員呼び出し音声再生 ====== */
+const staffCallAudio = new Audio('{{ url_for("static", filename="sounds/customer_is_calling.mp3") }}');
+staffCallAudio.preload = 'auto';
+
+let soundEnabled = true;
+const soundToggle = document.getElementById('sound-toggle');
+if (soundToggle) {
+  soundToggle.addEventListener('change', (e) => {
+    soundEnabled = e.target.checked;
+    if (DEBUG_KDS) console.log('[KDS SOUND]', soundEnabled ? 'enabled' : 'disabled');
+  });
+}
+
+window.playStaffCall = async function(){
+  if (!soundEnabled) {
+    if (DEBUG_KDS) console.log('[KDS SOUND] staff call sound disabled');
+    return;
+  }
+  try{
+    staffCallAudio.currentTime = 0;
+    await staffCallAudio.play();
+    if (DEBUG_KDS) console.log('[KDS SOUND] staff call played');
+  }catch(err){
+    console.warn('[KDS SOUND] playStaffCall failed:', err);
+  }
+};
+
+/* ====== 店員呼び出しポーリング ====== */
+let lastStaffCallTimestamp = 0;
+async function checkStaffCalls(){
+  try{
+    const url = '/api/staff_call/poll?since=' + lastStaffCallTimestamp;
+    const res = await fetch(url, { cache: 'no-store' });
+    const data = await res.json();
+    
+    if (DEBUG_KDS) console.log('[KDS STAFF_CALL]', data);
+    
+    if (data && data.ok && data.calls && data.calls.length > 0) {
+      // 新しい呼び出しがあれば音声再生
+      data.calls.forEach(call => {
+        if (call.timestamp > lastStaffCallTimestamp) {
+          lastStaffCallTimestamp = call.timestamp;
+          if (DEBUG_KDS) console.log('[KDS STAFF_CALL] New call from table:', call.table_no);
+          window.playStaffCall();
+        }
+      });
+    }
+  }catch(e){
+    console.error('[KDS] checkStaffCalls failed:', e);
+  }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   await loadCategories();
 
@@ -293,6 +351,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   fetchAndUpdateKds(true);
 
   setInterval(() => { if (hasAnySelection()) fetchAndUpdateKds(true); }, 3000);
+  setInterval(checkStaffCalls, 3000); // 店員呼び出しチェック
 });
 </script>
 

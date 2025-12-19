@@ -45,6 +45,9 @@
       <div>小計: <span id="subtotal">0</span> 円</div>
       <button class="btn" onclick="submitOrder()">注文する</button>
     </div>
+    <div style="margin-top:10px;">
+      <button class="btn" style="background:#f59e0b;border-color:#f59e0b;width:100%;" onclick="callStaff()">🔔 店員を呼ぶ</button>
+    </div>
   </div>
 
   <script>
@@ -88,6 +91,21 @@
       if(!j.ok){ alert('エラー: '+(j.error||'')); return; }
       alert('注文を送信しました。合計: ¥'+j.total);
       cart = []; render();
+    }
+
+    async function callStaff(){
+      try{
+        const res = await fetch('/api/staff_call', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({token, table_no: '{{ table["テーブル番号"] }}'})
+        });
+        const j = await res.json();
+        if(!j.ok){ alert('エラー: '+(j.error||'')); return; }
+        alert('店員を呼び出しました。少々お待ちください。');
+      }catch(e){
+        alert('通信エラー: '+e);
+      }
     }
   </script>
 </body>
