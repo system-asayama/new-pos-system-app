@@ -2,6 +2,18 @@
 {% block content %}
 <h2>KDS（キッチン・ドリンカー）</h2>
 
+<!-- ▼ 店員呼び出し表示エリア -->
+<div id="staff-call-alert" style="display:none; background:#fef3c7; border:2px solid #f59e0b; border-radius:8px; padding:12px 16px; margin:12px 0; box-shadow:0 4px 6px rgba(0,0,0,0.1);">
+  <div style="display:flex; align-items:center; gap:12px;">
+    <span style="font-size:32px;">🔔</span>
+    <div style="flex:1;">
+      <div style="font-size:18px; font-weight:700; color:#92400e; margin-bottom:4px;">店員呼び出し</div>
+      <div id="staff-call-tables" style="font-size:16px; font-weight:600; color:#b45309;"></div>
+    </div>
+    <button type="button" id="staff-call-dismiss" style="padding:8px 16px; background:#fff; border:1px solid #d97706; border-radius:6px; cursor:pointer; font-weight:600; color:#d97706;">確認</button>
+  </div>
+</div>
+
 <!-- ▼ カテゴリフィルタ（最初は全て未選択） -->
 <div id="cat-bar" style="display:flex; flex-wrap:wrap; gap:8px; margin:6px 0 12px; align-items:center;">
   <button type="button" id="btn-all" class="cat-btn all" data-id="__ALL__">すべて</button>
@@ -318,6 +330,35 @@ window.playStaffCall = async function(){
 
 /* ====== 店員呼び出しポーリング ====== */
 let lastStaffCallTimestamp = 0;
+let activeCalls = new Set(); // 現在表示中の呼び出し
+
+function updateStaffCallDisplay() {
+  const alertEl = document.getElementById('staff-call-alert');
+  const tablesEl = document.getElementById('staff-call-tables');
+  
+  if (activeCalls.size > 0) {
+    const tableList = Array.from(activeCalls).sort((a, b) => {
+      // 数値としてソートを試みる
+      const numA = parseInt(a);
+      const numB = parseInt(b);
+      if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+      return a.localeCompare(b);
+    });
+    tablesEl.textContent = 'テーブル: ' + tableList.join(', ');
+    alertEl.style.display = 'block';
+  } else {
+    alertEl.style.display = 'none';
+  }
+}
+
+const dismissBtn = document.getElementById('staff-call-dismiss');
+if (dismissBtn) {
+  dismissBtn.addEventListener('click', () => {
+    activeCalls.clear();
+    updateStaffCallDisplay();
+  });
+}
+
 async function checkStaffCalls(){
   try{
     const url = '/api/staff_call/poll?since=' + lastStaffCallTimestamp;
@@ -327,11 +368,17 @@ async function checkStaffCalls(){
     if (DEBUG_KDS) console.log('[KDS STAFF_CALL]', data);
     
     if (data && data.ok && data.calls && data.calls.length > 0) {
-      // 新しい呼び出しがあれば音声再生
+      // 新しい呼び出しがあれば音声再生と表示追加
       data.calls.forEach(call => {
         if (call.timestamp > lastStaffCallTimestamp) {
           lastStaffCallTimestamp = call.timestamp;
           if (DEBUG_KDS) console.log('[KDS STAFF_CALL] New call from table:', call.table_no);
+          
+          // 呼び出しリストに追加
+          activeCalls.add(call.table_no);
+          updateStaffCallDisplay();
+          
+          // 音声再生
           window.playStaffCall();
         }
       });
