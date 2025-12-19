@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>テナント追加</h2>
+
+<form method="post" action="{{ url_for('sys_tenants_new') }}" class="card" style="max-width:520px;">
+  <label>名称</label>
+  <input name="name" value="{{ name or '' }}" required>
+
+  <label>slug（URL等に使う短い識別子。英小文字・数字・ハイフン推奨）</label>
+  <input name="slug" value="{{ slug or '' }}" required>
+
+  {# CSRF を導入済みなら有効化
+  <input type="hidden" name="csrf_token" value="{{ get_csrf() }}">
+  #}
+
+  <div class="actions" style="margin-top:12px;">
+    <button class="btn" type="submit">作成する</button>
+    <a class="btn sub" href="{{ url_for('sys_tenants') }}">キャンセル</a>
+  </div>
+</form>
+{% endblock %}

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>店舗管理者の新規作成</h2>
+
+<div class="card" style="max-width:520px;">
+  <p class="small" style="color:#666; margin-top:0;">
+    店舗：<strong>{{ store.name }}</strong>（コード: {{ store.code }}）
+  </p>
+
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      <ul class="flash">
+        {% for m in messages %}<li>{{ m }}</li>{% endfor %}
+      </ul>
+    {% endif %}
+  {% endwith %}
+
+  <form method="post" action="{{ url_for('tenant_store_admin_new', sid=store.id) }}">
+    <div class="form-row">
+      <label for="login_id">ログインID</label>
+      <input id="login_id" name="login_id" required autocomplete="username">
+    </div>
+
+    <div class="form-row">
+      <label for="name">氏名</label>
+      <input id="name" name="name" required>
+    </div>
+
+    <div class="form-row">
+      <label for="password">パスワード</label>
+      <input id="password" name="password" type="password" required autocomplete="new-password">
+    </div>
+
+    <div class="actions" style="margin-top:12px; display:flex; gap:8px;">
+      <button class="btn" type="submit">作成する</button>
+      <a class="btn sub" href="{{ url_for('tenant_stores') }}">店舗一覧へ戻る</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>テナント管理者（{{ tenant.名称 }} / {{ tenant.slug }}）</h2>
+
+<div class="card">
+  <h3 style="margin:0 0 10px">一覧</h3>
+  <table>
+    <thead><tr><th>ID</th><th>ログインID</th><th>氏名</th><th>有効</th><th>操作</th></tr></thead>
+    <tbody>
+    {% for a in admins %}
+      <tr>
+        <td>{{ a.id }}</td>
+        <td>{{ a.login_id }}</td>
+        <td>{{ a.name }}</td>
+        <td>{% if a.active == 1 %}<span class="badge">有効</span>{% else %}<span class="badge" style="background:#fee2e2;border-color:#fecaca">無効</span>{% endif %}</td>
+        <td class="actions">
+          <!-- 有効/無効トグル -->
+          <form method="post" action="{{ url_for('sys_tenant_admins_update', tid=tenant.id) }}">
+            {% if get_csrf %}<input type="hidden" name="csrf_token" value="{{ get_csrf() }}">{% endif %}
+            <input type="hidden" name="op" value="toggle">
+            <input type="hidden" name="id" value="{{ a.id }}">
+            <button class="btn sub" type="submit">有効/無効</button>
+          </form>
+
+          <!-- パスワード更新 -->
+          <form method="post" action="{{ url_for('sys_tenant_admins_update', tid=tenant.id) }}" onsubmit="return confirm('パスワードを更新しますか？')">
+            {% if get_csrf %}<input type="hidden" name="csrf_token" value="{{ get_csrf() }}">{% endif %}
+            <input type="hidden" name="op" value="resetpw">
+            <input type="hidden" name="id" value="{{ a.id }}">
+            <input name="password" placeholder="新PW" required style="width:140px">
+            <button class="btn sub" type="submit">PW更新</button>
+          </form>
+
+          <!-- 削除 -->
+          <form method="post" action="{{ url_for('sys_tenant_admins_update', tid=tenant.id) }}" onsubmit="return confirm('削除しますか？')">
+            {% if get_csrf %}<input type="hidden" name="csrf_token" value="{{ get_csrf() }}">{% endif %}
+            <input type="hidden" name="op" value="delete">
+            <input type="hidden" name="id" value="{{ a.id }}">
+            <button class="btn sub" type="submit">削除</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <h3 style="margin:0 0 10px">追加</h3>
+  <form method="post" action="{{ url_for('sys_tenant_admins_new', tid=tenant.id) }}">
+    {% if get_csrf %}<input type="hidden" name="csrf_token" value="{{ get_csrf() }}">{% endif %}
+    <label>ログインID（小文字推奨）</label><input name="login_id" required>
+    <label>氏名</label><input name="name" required>
+    <label>パスワード</label><input name="password" type="password" required>
+    <label>パスワード（確認）</label><input name="password_confirm" type="password" required>
+    <div class="actions" style="margin-top:10px">
+      <button class="btn" type="submit">追加</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

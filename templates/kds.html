@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>KDS（キッチン・ドリンカー）</h2>
+
+<!-- ▼ カテゴリフィルタ（最初は全て未選択） -->
+<div id="cat-bar" style="display:flex; flex-wrap:wrap; gap:8px; margin:6px 0 12px;">
+  <button type="button" id="btn-all" class="cat-btn all" data-id="__ALL__">すべて</button>
+</div>
+<style>
+  .cat-btn{ padding:6px 10px; border:1px solid #d1d5db; border-radius:8px; background:#fff; cursor:pointer; }
+  .cat-btn.active{ background:#2563eb; color:#fff; border-color:#1d4ed8; }
+  .cat-btn.all{ font-weight:600; }
+
+  /* ▼ KDS 行の操作UI */
+  .ops{ display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .ops .count-wrap{ display:inline-flex; gap:6px; align-items:center; }
+  .ops .count-input{ width:72px; padding:4px 6px; }
+</style>
+<!-- ▲ -->
+
+<table id="kds-table">
+  <thead>
+    <!-- ★ 「時刻」列を追加（卓の次） -->
+    <tr><th>#</th><th>卓</th><th>時刻</th><th>品名</th><th>数</th><th>メモ</th><th>状態</th><th>操作</th></tr>
+  </thead>
+  <tbody id="tbody"><!-- 初期は空 --></tbody>
+</table>
+
+<script>
+const KDS_API_URL = "{{ url_for('kds_api_get_items') }}";
+const API_CATS    = "{{ url_for('api_kds_categories') }}";
+
+/* ====== デバッグ設定 ====== */
+const DEBUG_KDS = true;
+
+/* ====== 自動更新の“編集ロック” ====== */
+const EDIT_LOCK_MS = 5000;
+let refreshPauseUntil = 0;
+function pauseRefresh(ms){ refreshPauseUntil = Math.max(refreshPauseUntil, Date.now() + (ms||EDIT_LOCK_MS)); }
+function canRefresh(){ return Date.now() >= refreshPauseUntil; }
+
+/* ====== 状態変更（count 対応） ====== */
+async function chg(key, itemId, st){
+  try{
+    const row  = document.querySelector(`tr[data-key="${CSS.escape(key)}"]`);
+    const btns = row ? row.querySelectorAll('button') : [];
+    btns.forEach(b => b.disabled = true);
+
+    // 表示値を参照（卓・品名・残数）
+    const tds = row ? row.querySelectorAll('td') : [];
+    const tableNo   = tds[1]?.textContent?.trim() ?? "";
+    const itemName  = tds[3]?.textContent?.trim() ?? ""; // ★「時刻」列を挿入したので index をずらす
+    const qtyRemain = Number(tds[4]?.textContent ?? 0);  // ★ ここも +1
+
+    // 数量（入力エリアがあれば尊重）
+    let count = 1;
+    const countInput = row ? row.querySelector('.js-count') : null;
+    if (countInput && countInput.value) {
+      const v  = Number(countInput.value);
+      const mx = Number(countInput.max || 1);
+      const mn = Number(countInput.min || 1);
+      count = Math.max(mn, Math.min(mx, isFinite(v) ? v : 1));
+      if (String(count) !== String(countInput.value)) countInput.value = String(count);
+    }
+
+    // ★取消 確認ダイアログ & 過剰チェック
+    const isCancel = /^(取消|ｷｬﾝｾﾙ|キャンセル|cancel|void)$/i.test(st);
+    if (isCancel) {
+      if (count > qtyRemain) {
+        alert(`取消個数(${count})が残数(${qtyRemain})を超えています。`);
+        btns.forEach(b => b.disabled = false);
+        return;
+      }
+      const fullCancel = count >= qtyRemain;
+      const head = fullCancel ? "※全数取消になります※\n" : "";
+      const msg  = `${head}卓:${tableNo} 『${itemName}』を ${count} 個 取消します。よろしいですか？`;
+      if (!window.confirm(msg)) {
+        btns.forEach(b => b.disabled = false);
+        return;
+      }
+    }
+
+    pauseRefresh(2000);
+
+    const res = await fetch('/api/order_item/'+itemId+'/status', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ status: st, count })
+    });
+    const j = await res.json().catch(()=>({ok:false, error:'invalid json'}));
+
+    if (DEBUG_KDS) console.log('[KDS POST]', {itemId, st, count, http:res.status, json:j});
+
+    if(!res.ok || !j.ok){
+      const msg = (j && j.error) ? j.error : (res.status + ' ' + res.statusText);
+      alert('更新に失敗しました: ' + msg);
+      btns.forEach(b => b.disabled = false);
+      return;
+    }
+    refreshPauseUntil = 0;
+    fetchAndUpdateKds(false);
+  }catch(e){
+    console.error('通信エラー:', e);
+    alert('通信エラー: ' + e);
+  }
+}
+
+/* ====== カテゴリ（未選択＝表示なし） ====== */
+const catBar = document.getElementById('cat-bar');
+const btnAll = document.getElementById('btn-all');
+
+function currentSelectedCatIds(){
+  const active = Array.from(catBar.querySelectorAll('.cat-btn[data-id]:not(.all).active'));
+  return active.map(b => parseInt(b.dataset.id,10)).filter(n => !isNaN(n));
+}
+function hasAnySelection(){
+  return btnAll.classList.contains('active') || currentSelectedCatIds().length > 0;
+}
+function setAllActive(state){ btnAll.classList.toggle('active', state); }
+function updateAllButtonState(){
+  const cats = Array.from(catBar.querySelectorAll('.cat-btn[data-id]:not(.all)'));
+  const allOn = cats.length>0 && cats.every(b => b.classList.contains('active'));
+  setAllActive(allOn);
+}
+function attachCatHandlers(){
+  catBar.querySelectorAll('.cat-btn[data-id]:not(.all)').forEach(btn => {
+    btn.type = 'button';
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      btn.classList.toggle('active');
+      updateAllButtonState();
+      fetchAndUpdateKds(true);
+    });
+  });
+  btnAll.type = 'button';
+  btnAll.addEventListener('click', (e) => {
+    e.preventDefault();
+    const turnOnAll = !btnAll.classList.contains('active');
+    const cats = catBar.querySelectorAll('.cat-btn[data-id]:not(.all)');
+    cats.forEach(b => b.classList.toggle('active', turnOnAll));
+    setAllActive(turnOnAll);
+    fetchAndUpdateKds(true);
+  });
+}
+async function loadCategories(){
+  try{
+    const r = await fetch(API_CATS, { cache:'no-store' });
+    const j = await r.json();
+    if (DEBUG_KDS) console.log('[KDS CATS]', j);
+    if (!j || !j.ok) return;
+    Array.from(catBar.querySelectorAll('.cat-btn[data-id]:not(.all)')).forEach(e => e.remove());
+    (j.categories || []).forEach(c => {
+      const b = document.createElement('button');
+      b.className = 'cat-btn';
+      b.dataset.id = String(c.id);
+      b.textContent = c.name || c.名称 || ('カテゴリ#'+c.id);
+      b.type = 'button';
+      catBar.appendChild(b);
+    });
+    setAllActive(false);
+    attachCatHandlers();
+  }catch(e){ console.warn('loadCategories failed', e); }
+}
+
+function buildItemsUrl(){
+  if (!hasAnySelection()) return null;
+  const p = new URLSearchParams();
+  if (!btnAll.classList.contains('active')) {
+    const ids = currentSelectedCatIds();
+    p.set('cat_ids', ids.join(','));
+  }
+  if (DEBUG_KDS) p.set('debug', '1'); // サーバーデバッグON
+  p.set('ts', String(Date.now()));
+  return KDS_API_URL + '?' + p.toString();
+}
+
+/* ====== 一覧取得（未選択ならクリア） ====== */
+let initialized = false;
+let knownIds = new Set();
+
+/* 入力途中の値を保持（keyベース） */
+function captureDraftCounts() {
+  const map = new Map();
+  document.querySelectorAll('#tbody tr').forEach(tr => {
+    const key = tr.getAttribute('data-key');
+    const inp = tr.querySelector('.js-count');
+    if (key && inp && inp.value) map.set(key, String(inp.value));
+  });
+  return map;
+}
+
+async function fetchAndUpdateKds(triggerSoundOnNew = true){
+  if (!canRefresh()) return;
+
+  const url = buildItemsUrl();
+  const tbody = document.getElementById('tbody');
+
+  if (!url){
+    tbody.innerHTML = '';
+    knownIds = new Set();
+    initialized = false;
+    if (DEBUG_KDS) console.log('[KDS] no url (no selection)');
+    return;
+  }
+
+  const draft = captureDraftCounts();
+
+  try{
+    const response = await fetch(url, { cache: 'no-store' });
+    const data = await response.json();
+    if (DEBUG_KDS) console.log('[KDS GET]', {url, http:response.status, data});
+
+    if (!data || data.ok !== true) {
+      console.warn('KDS API error', data);
+      return;
+    }
+
+    tbody.innerHTML = '';
+    const currentIds = new Set(data.items.map(it => it.id));
+
+    let newIds = [];
+    if (!initialized) {
+      knownIds = new Set(currentIds);
+      initialized = true;
+    } else {
+      currentIds.forEach(id => { if (!knownIds.has(id)) newIds.push(id); });
+    }
+
+    data.items.forEach((item) => {
+      const rowKey = String(item.id); // id固定
+      const tr = document.createElement('tr');
+      tr.setAttribute('data-key', rowKey);
+
+      const absQty = Math.abs(Number(item.qty || 0));
+      const defaultCount = draft.has(rowKey) ? draft.get(rowKey) : String(absQty);
+
+      tr.innerHTML = `
+        <td>${item.id}</td>
+        <td>${item.table_no}</td>
+        <td>${item.ordered_time || ''}</td>  <!-- ★ 新規: 時刻（HH:MM） -->
+        <td>${item.name}</td>
+        <td>${item.qty}</td>
+        <td>${item.memo || ''}</td>
+        <td>${item.status}</td>
+        <td>
+          <div class="ops">
+            <button type="button" onclick="chg('${rowKey}', ${item.id}, '調理中')">調理中</button>
+            <button type="button" onclick="chg('${rowKey}', ${item.id}, '提供済')">提供済</button>
+            <button type="button" onclick="chg('${rowKey}', ${item.id}, '取消')">取消</button>
+
+            ${absQty >= 2 ? `
+              <span class="count-wrap">
+                <span class="small muted">個数</span>
+                <input type="number" class="js-count count-input"
+                       min="1" max="${absQty}" value="${defaultCount}">
+              </span>
+            ` : ''}
+          </div>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    knownIds = currentIds;
+
+    if (triggerSoundOnNew && newIds.length > 0 && typeof window.playNotify === 'function') {
+      window.playNotify();
+    }
+
+    // 入力/フォーカスで編集ロック
+    tbody.addEventListener('focusin', (e) => {
+      if (e.target && e.target.classList.contains('js-count')) pauseRefresh();
+    });
+    tbody.addEventListener('input', (e) => {
+      if (e.target && e.target.classList.contains('js-count')) pauseRefresh();
+    });
+    tbody.addEventListener('focusout', (e) => {
+      if (e.target && e.target.classList.contains('js-count')) pauseRefresh(1200);
+    });
+
+  }catch(e){
+    console.error('Failed to fetch KDS items:', e);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadCategories();
+
+  // 初回は「すべて」を自動ONして即取得
+  if (!btnAll.classList.contains('active')) {
+    btnAll.classList.add('active');
+  }
+  fetchAndUpdateKds(true);
+
+  setInterval(() => { if (hasAnySelection()) fetchAndUpdateKds(true); }, 3000);
+});
+</script>
+
+{% endblock %}

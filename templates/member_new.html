@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>メンバー追加</h2>
+
+<div class="card" style="max-width:520px;">
+  {% if errors %}
+    <div class="small" style="color:var(--danger); margin-bottom:8px;">
+      <ul style="margin:0 0 0 16px;">
+        {% for e in errors %}
+          <li>{{ e }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <form method="post" autocomplete="off">
+    <label>種別</label>
+    <select name="role" required>
+      <option value="employee" {% if form.role == "employee" %}selected{% endif %}>従業員</option>
+      <option value="admin" {% if form.role == "admin" %}selected{% endif %}>管理者</option>
+    </select>
+
+    <label>氏名</label>
+    <input name="name" value="{{ form.name }}" required>
+
+    <label>ログインID</label>
+    <input name="login_id" value="{{ form.login_id }}" required autocomplete="username">
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <div>
+        <label>パスワード</label>
+        <input name="password" type="password" required autocomplete="new-password">
+      </div>
+      <div>
+        <label>パスワード（確認）</label>
+        <input name="password2" type="password" required autocomplete="new-password">
+      </div>
+    </div>
+
+    <label style="display:flex; align-items:center; gap:8px; margin-top:8px;">
+      <input type="checkbox" name="is_active" value="1" {% if form.is_active %}checked{% endif %}>
+      有効にする
+    </label>
+
+    <div style="margin-top:12px; display:flex; gap:8px;">
+      <button class="btn" type="submit">保存</button>
+      <a class="btn sub" href="{{ url_for('floor') }}">戻る</a>
+    </div>
+
+    <div class="small" style="color:var(--muted); margin-top:12px;">
+      ※同一店舗内で、管理者/従業員それぞれの「ログインID」は重複できません。<br>
+      ※店舗は現在ログイン中の店舗（{{ session.get('store_name') or '—' }}）に紐づいて登録されます。
+    </div>
+  </form>
+</div>
+{% endblock %}

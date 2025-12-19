@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>従業員ログイン（PIN）</h2>
+
+<div class="card" style="max-width:420px;">
+  <form method="post">
+    <label>PIN</label>
+    <input name="pin" inputmode="numeric" pattern="[0-9]*" required autofocus placeholder="例：1001">
+    <div style="margin-top:12px; display:flex; gap:8px;">
+      <button class="btn" type="submit">ログイン</button>
+      <a class="btn sub" href="{{ url_for('login_choice') }}">戻る</a>
+    </div>
+    {% if error %}
+      <div class="small" style="color:var(--danger); margin-top:8px;">{{ error }}</div>
+    {% endif %}
+  </form>
+
+  <div class="small" style="color:var(--muted); margin-top:12px;">
+    PIN は環境変数 <code>STAFF_PINS</code> で設定できます（例：<code>1001:Alice,1002:Bob,7777:Manager</code>）。
+  </div>
+</div>
+{% endblock %}

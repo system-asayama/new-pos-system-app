@@ -1,0 +1,411 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- debug: {{ debug_info }} -->
+
+<style>
+  /* ▼ 監査用マイナス行を赤系で */
+  .neg-row { color:#b91c1c; background:#fff1f2; }
+  .void-badge {
+    display:inline-block; padding:2px 6px; font-size:12px;
+    border:1px solid #b91c1c; border-radius:6px; color:#b91c1c; background:#fff;
+    margin-left:6px;
+  }
+
+  /* ▼ 状態のバッジ群（クリック可能） */
+  .progress-detail { display:inline-flex; gap:8px; font-size:12px; flex-wrap:wrap; }
+  .status-chip {
+    display:inline-block; padding:2px 8px; border-radius:4px; font-weight:500; cursor:pointer;
+    user-select:none; border:1px solid transparent;
+  }
+  .status-chip:focus-visible { outline:2px solid #2563eb; outline-offset:2px; }
+  .chip-new{background:#dbeafe;color:#1e40af}
+  .chip-cooking{background:#fef3c7;color:#92400e}
+  .chip-served{background:#d1fae5;color:#065f46}
+  .chip-canceled{background:#fee2e2;color:#991b1b}
+
+  .time-cell{white-space:nowrap;font-variant-numeric:tabular-nums}
+  .small.muted{color:#6b7280}
+
+  /* ▼ 操作用ポップオーバー（状態バッジを押すと出る） */
+  .action-host { position:relative; min-height:26px; }
+  .action-pop {
+    position:absolute; top:0; left:0; z-index:50;
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+    padding:8px; background:#fff; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,.12);
+  }
+  .action-pop .badge-src {
+    display:inline-block; padding:2px 6px; border-radius:6px; font-size:12px; border:1px solid #e5e7eb; background:#f9fafb;
+  }
+  .action-pop input[type="number"] { width:72px; padding:4px 6px; }
+  .action-pop .btn { padding:6px 10px; }
+  .action-pop .btn.sub { background:#f3f4f6; border:1px solid #e5e7eb; }
+  .action-pop .btn.primary { background:#2563eb; color:#fff; border:1px solid #1d4ed8; }
+
+  /* ▼ クリックを確実に通すための保険 */
+  .card, table, thead, tbody, tr, th, td, .action-host, .action-pop, .progress-detail, .status-chip, select, input, button {
+    position:relative; z-index:1; pointer-events:auto !important;
+  }
+  tr::before, tr::after, td::before, td::after { pointer-events:none !重要; }
+  
+  /* ▼ QRユーザーの場合は操作列を非表示 */
+  {% if is_qr_user %}
+  .action-host { display: none !important; }
+  th:has(+ th:last-child), td:has(+ td:last-child) { /* 操作列のヘッダーとセルを非表示 */ }
+  table th:nth-last-child(2), table td:nth-last-child(2) { /* 操作列を非表示 */ display: none; }
+  {% endif %}
+</style>
+
+{% set table_no = (
+  table.table_no
+  if table is defined and table.table_no is defined
+  else (table['テーブル番号'] if table is defined and table is mapping and 'テーブル番号' in table else '')
+) %}
+
+<h2>テーブル {{ table_no }}</h2>
+
+{% set hdrs = (orders if orders is defined and orders else (order_list if order_list is defined else [])) %}
+{% if hdrs and hdrs|length > 0 %}
+  {% for h in hdrs %}
+    {% set hid = (h.id if h.id is defined else (h['id'] if h is mapping and 'id' in h else None)) %}
+    {% set hopened =
+      (opened_at_map[hid] if opened_at_map is defined and hid in opened_at_map else
+       (h.opened_at if h.opened_at is defined else (h['opened_at'] if h is mapping and 'opened_at' in h else None)))
+    %}
+    {% set hstatus = h.status if h.status is defined else (h['status'] if h is mapping and 'status' in h else '') %}
+
+    {% set items = (items_map.get(hid, []) if items_map is defined else []) %}
+    {% set ns = namespace(subtotal=0, tax=0, total=0) %}
+    {% for d in items %}
+      {% set qty   = (d['数量'] if '数量' in d else 0) | int %}
+      {% set excl  = (d['税抜単価'] if '税抜単価' in d else 0) | int %}
+      {% set rate  = (d['税率'] if '税率' in d else 0.10) | float %}
+      {% set unit_tax = (excl * rate) | round(0, 'floor') | int %}
+      {% set incl  = (d['税込単価'] if '税込単価' in d else (excl + unit_tax)) | int %}
+      {% set label_raw = (d['状態'] if '状態' in d else '') | string %}
+      {% set label = label_raw|lower %}
+      {% set is_cancel = label in ['取消','ｷｬﾝｾﾙ','キャンセル','cancel','void'] %}
+      {% if qty != 0 and (qty < 0 or not is_cancel) %}
+        {% set ns.subtotal = ns.subtotal + (excl * qty) %}
+        {% set ns.tax      = ns.tax      + (unit_tax * qty) %}
+        {% set ns.total    = ns.total    + (incl * qty) %}
+      {% endif %}
+    {% endfor %}
+
+    <div class="card">
+      <div>
+        伝票ID: {{ hid }} / 合計: ¥{{ ns.total }}
+        {% if hopened %} / 開始: {{ hopened }}{% endif %}
+      </div>
+      <div class="small muted" style="margin-top:4px">
+        小計(税抜): ¥{{ ns.subtotal }} / 税額: ¥{{ ns.tax }}
+      </div>
+
+      <div class="small" style="margin-top:6px">
+        伝票ステータス:
+        <select class="js-hdr-status" data-order-id="{{ hid }}">
+          {% set hdr_opts = ['新規','調理中','提供済','会計中','会計済'] %}
+          {% for opt in hdr_opts %}
+            <option value="{{ opt }}" {{ 'selected' if opt == hstatus else '' }}>{{ opt }}</option>
+          {% endfor %}
+        </select>
+        <span class="small muted js-hdr-save-result" data-order-id="{{ hid }}"></span>
+      </div>
+    </div>
+
+    {% if items and items|length > 0 %}
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>品名</th>
+            <th>数量</th>
+            <th>単価<br><span class="small muted">(税込 / 税抜)</span></th>
+            <th>小計<br><span class="small muted">(税込 / 税抜)</span></th>
+            <!-- 状態（クリックで操作パネルを開く） -->
+            <th>状態</th>
+            <th>メモ</th>
+            <!-- 操作（ポップオーバーの表示場所） -->
+            <th>操作</th>
+            <th>注文</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in items %}
+            {% set did      = d['id'] if 'id' in d else '' %}
+            {% set name     = d['名称'] if '名称' in d else '' %}
+            {% set qty      = (d['数量'] if '数量' in d else 0) | int %}
+            {% set excl     = (d['税抜単価'] if '税抜単価' in d else 0) | int %}
+            {% set rate     = (d['税率'] if '税率' in d else 0.10) | float %}
+            {% set unit_tax = (excl * rate) | round(0, 'floor') | int %}
+            {% set incl     = (d['税込単価'] if '税込単価' in d else (excl + unit_tax)) | int %}
+            {% set label    = (d['状態'] if '状態' in d else '新規') | string %}
+            {% set is_cancel = label|lower in ['取消','ｷｬﾝｾﾙ','キャンセル','cancel','void'] %}
+            {% set is_cancel_positive = is_cancel and (qty > 0) %}
+            {% set is_negative = qty < 0 %}
+
+            {% set prog = (d['progress'] if 'progress' in d else {}) %}
+            {% set qty_new = (prog.get('qty_new', 0) if prog else 0) | int %}
+            {% set qty_cooking = (prog.get('qty_cooking', 0) if prog else 0) | int %}
+            {% set qty_served = (prog.get('qty_served', 0) if prog else 0) | int %}
+            {% set qty_canceled = (prog.get('qty_canceled', 0) if prog else 0) | int %}
+
+            {# ★ ここを簡潔に修正（カッコ過多エラー回避） #}
+            {% set ordered_at = d.get('ordered_at') or d.get('added_at') or d.get('created_at') or d.get('追加日時') %}
+
+            {% set sub_excl = (is_cancel_positive and 0 or (excl * qty)) %}
+            {% set sub_incl = (is_cancel_positive and 0 or (incl * qty)) %}
+
+            <tr class="{% if is_negative %}neg-row{% elif is_cancel %}muted{% endif %}">
+              <td>{{ did }}</td>
+              <td>
+                {{ name }}
+                {# 取消バッジはマイナス監査行だけに表示 #}
+                {% if is_negative %}<span class="void-badge">取消</span>{% endif %}
+              </td>
+              <td>{{ qty }}</td>
+              <td>税込 ¥{{ incl }}<br><span class="small muted">税抜 ¥{{ excl }}</span></td>
+              <td>税込 ¥{{ sub_incl }}<br><span class="small muted">税抜 ¥{{ sub_excl }}</span></td>
+
+              <!-- 状態：各バッジはクリック可能（data-src, data-count を持つ） -->
+              <td>
+                {% if is_negative %}
+                  {# 取消行（マイナス数量）は棒線表示 #}
+                  <div class="progress-detail">
+                    <span class="muted">ー</span>
+                  </div>
+                {% else %}
+                  <div class="progress-detail">
+                    <span class="status-chip chip-new"
+                          data-role="chip" data-src="new" data-count="{{ qty_new }}"
+                          data-item-id="{{ did }}">新規: {{ qty_new }}</span>
+                    <span class="status-chip chip-cooking"
+                          data-role="chip" data-src="cooking" data-count="{{ qty_cooking }}"
+                          data-item-id="{{ did }}">調理中: {{ qty_cooking }}</span>
+                    <span class="status-chip chip-served"
+                          data-role="chip" data-src="served" data-count="{{ qty_served }}"
+                          data-item-id="{{ did }}">提供済: {{ qty_served }}</span>
+                    <span class="status-chip chip-canceled"
+                          data-role="chip" data-src="canceled" data-count="{{ qty_canceled }}"
+                          data-item-id="{{ did }}">取消: {{ qty_canceled }}</span>
+                  </div>
+                {% endif %}
+              </td>
+
+              <!-- メモ -->
+              <td>
+                {% set memo = d.get('メモ', '') %}
+                {% if memo %}
+                  <span class="small">{{ memo }}</span>
+                {% endif %}
+              </td>
+
+              <!-- 操作：ポップを差し込むためのホスト -->
+              <td>
+                <div class="action-host" data-item-id="{{ did }}"></div>
+                <span class="small muted js-save-result" data-item-id="{{ did }}"></span>
+              </td>
+
+              <td class="time-cell">{% if ordered_at %}<span class="small">{{ ordered_at }}</span>{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="card muted">この伝票に明細はまだありません。</div>
+    {% endif %}
+  {% endfor %}
+
+{% elif order is defined and order %}
+  <div class="card">
+    <div>注文ID: {{ order['id'] }}</div>
+    <div>小計(税抜): ¥{{ order['小計'] }} / 税額: ¥{{ order['税額'] }} / 合計(税込): ¥{{ order['合計'] }}</div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th><th>品名</th><th>数量</th>
+        <th>単価<br><span class="small muted">(税込 / 税抜)</span></th>
+        <th>小計<br><span class="small muted">(税込 / 税抜)</span></th>
+        <th>状態</th><th>メモ</th><th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in details %}
+        {% set excl = d['単価'] %}{% set rate = d['税率'] or 0 %}
+        {% set incl = excl + ((excl * rate)|round(0, 'floor')) %}
+        {% set sub_excl = excl * d['数量'] %}{% set sub_incl = incl * d['数量'] %}
+        <tr>
+          <td>{{ d['id'] }}</td><td>{{ d['名称'] }}</td><td>{{ d['数量'] }}</td>
+          <td>税込 ¥{{ incl }}<br><span class="small muted">税抜 ¥{{ excl }}</span></td>
+          <td>税込 ¥{{ sub_incl }}<br><span class="small muted">税抜 ¥{{ sub_excl }}</span></td>
+          <td>{{ d['状態'] }}</td>
+          <td>
+            {% set memo = d.get('メモ', '') %}
+            {% if memo %}<span class="small">{{ memo }}</span>{% endif %}
+          </td>
+          <td></td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+{% else %}
+  <div class="card">未注文</div>
+{% endif %}
+
+<a id="btn-back" class="btn" href="{{ url_for('floor') }}">戻る</a>
+
+<script>
+  (function () {
+    var back = document.getElementById('btn-back');
+    if (!back) return;
+    back.addEventListener('click', function (e) {
+      e.preventDefault();
+      var hasHistory = (document.referrer && document.referrer !== location.href) || (history.length > 1);
+      if (hasHistory) { history.back(); } else { location.href = "{{ url_for('floor') }}"; }
+    });
+  })();
+</script>
+
+<script>
+  (function () {
+    const CSRF = "{{ csrf_token or '' }}";
+    const IS_QR_USER = {{ 'true' if is_qr_user else 'false' }};
+
+    async function postJSON(url, body) {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": CSRF },
+        body: JSON.stringify(body || {})
+      });
+      return res.json().catch(() => ({}));
+    }
+    function clamp(n, lo, hi){ n = Number(n || 0); return Math.max(lo, Math.min(hi, n)); }
+
+    /* ▼ 状態→遷移先の許可ルール（巻き戻し許可を追加） */
+    const ALLOW = {
+      new:      ["調理中","提供済","取消"],
+      cooking:  ["新規","提供済","取消"],
+      served:   ["新規","調理中","取消"],
+      canceled: []
+    };
+
+    function statusLabel(srcKey){
+      return srcKey==="new"?"新規":srcKey==="cooking"?"調理中":srcKey==="served"?"提供済":"取消";
+    }
+
+    function refreshChips(rowEl, p){
+      const map = {
+        new: Number(p.qty_new||0),
+        cooking: Number(p.qty_cooking||0),
+        served: Number(p.qty_served||0),
+        canceled: Number(p.qty_canceled||0),
+      };
+      rowEl.querySelectorAll('[data-role="chip"]').forEach(chip=>{
+        const k = chip.dataset.src;
+        const v = map[k]||0;
+        chip.dataset.count = String(v);
+        chip.textContent = statusLabel(k) + ": " + v;
+      });
+    }
+
+    function openActionPop(itemId, srcKey, maxCount, anchorEl){
+      document.querySelectorAll('.action-pop').forEach(p=>p.remove());
+
+      const host = document.querySelector(`.action-host[data-item-id="${itemId}"]`);
+      if (!host) return;
+
+      const targets = ALLOW[srcKey] || [];
+      const pop = document.createElement('div');
+      pop.className = 'action-pop';
+      pop.innerHTML = `
+        <span class="badge-src">${statusLabel(srcKey)} →</span>
+        <select class="js-target">
+          ${targets.map(t => `<option value="${t}">${t}</option>`).join('')}
+        </select>
+        <input type="number" class="js-count" min="1" value="${maxCount>0?maxCount:1}">
+        <button type="button" class="btn primary js-apply">適用</button>
+        <button type="button" class="btn sub js-cancel">閉じる</button>
+      `;
+      host.appendChild(pop);
+
+      const countInput = pop.querySelector('.js-count');
+      countInput.max = String(Math.max(1, maxCount));
+      countInput.value = String(Math.max(1, Math.min(maxCount||1, Number(countInput.value||1))));
+
+      pop.querySelector('.js-cancel').addEventListener('click', ()=>pop.remove());
+      pop.addEventListener('keydown', (e)=>{ if(e.key==='Escape') pop.remove(); });
+
+      pop.querySelector('.js-apply').addEventListener('click', async ()=>{
+        const to = pop.querySelector('.js-target').value;
+        const cnt = clamp(countInput.value, 1, Math.max(1, maxCount||1));
+        const hint = document.querySelector(`.js-save-result[data-item-id="${itemId}"]`);
+        if (hint) hint.textContent = "保存中…";
+        try{
+          const json = await postJSON(`/staff/api/order_item/${itemId}/status`, {
+            status: to,
+            from_status: statusLabel(srcKey),
+            count: cnt
+          });
+          if (json && (json.ok || json.status==='success')){
+            if (hint) hint.textContent = `✓ ${statusLabel(srcKey)} から ${to} に ${cnt}個変更`;
+            if (json.progress){
+              const tr = host.closest('tr');
+              refreshChips(tr, json.progress);
+            }
+            pop.remove();
+            setTimeout(()=>location.reload(), 400);
+          }else{
+            if (hint) hint.textContent = "× 失敗" + (json && (json.error||json.message)?(": "+(json.error||json.message)):"");
+          }
+        }catch(e){
+          if (hint) hint.textContent = "× 通信エラー";
+        }
+        setTimeout(()=>{ if(hint) hint.textContent = ""; }, 2500);
+      });
+    }
+
+    document.querySelectorAll('[data-role="chip"]').forEach(chip=>{
+      // QRユーザーの場合は状態変更を無効化
+      if (IS_QR_USER) {
+        chip.style.cursor = 'default';
+        chip.style.opacity = '0.7';
+        return;
+      }
+      
+      chip.addEventListener('click', function(){
+        const itemId = this.dataset.itemId;
+        const srcKey = this.dataset.src;
+        const maxCount = Number(this.dataset.count || 0);
+        if (!ALLOW[srcKey] || ALLOW[srcKey].length===0 || maxCount<=0){
+          return;
+        }
+        openActionPop(itemId, srcKey, maxCount, this);
+      });
+    });
+
+    document.querySelectorAll("select.js-hdr-status").forEach(function(sel){
+      sel.addEventListener("change", async function(){
+        const orderId = this.dataset.orderId;
+        const val = this.value;
+        const hint = document.querySelector(`.js-hdr-save-result[data-order-id="${orderId}"]`);
+        if (hint) hint.textContent = "保存中…";
+        try {
+          const json = await postJSON(`/staff/api/order/${orderId}/status`, {status: val});
+          if (json && (json.ok || json.status==='success')) {
+            if (hint) hint.textContent = "✓ 保存しました";
+          } else {
+            if (hint) hint.textContent = "× 失敗" + (json && (json.error||json.message) ? (": " + (json.error||json.message)) : "");
+          }
+        } catch(e){
+          if (hint) hint.textContent = "× 通信エラー";
+        }
+        setTimeout(()=>{ if(hint) hint.textContent = ""; }, 1500);
+      });
+    });
+  })();
+</script>
+
+{% endblock %}

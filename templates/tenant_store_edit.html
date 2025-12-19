@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>店舗編集</h2>
+<div class="card">
+  <form method="post">
+    {% if get_csrf %}<input type="hidden" name="csrf_token" value="{{ get_csrf() }}">{% endif %}
+    <label>店舗コード</label><input name="code" value="{{ store.code }}" required>
+    <label>名称</label><input name="name" value="{{ store.name }}" required>
+    <label>有効</label>
+    <select name="active">
+      <option value="1" {% if store.active==1 %}selected{% endif %}>有効</option>
+      <option value="0" {% if store.active!=1 %}selected{% endif %}>無効</option>
+    </select>
+    <div class="actions" style="margin-top:12px">
+      <button class="btn" type="submit">保存</button>
+      <a class="btn sub" href="{{ url_for('tenant_stores') }}">戻る</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <h2>{{ title }}</h2>
+    <a href="{{ url_for('admin_product_options_new') }}" class="btn">＋ 新規作成</a>
+  </div>
+
+  {% if options %}
+  <table>
+    <thead>
+      <tr>
+        <th>オプション名</th>
+        <th>適用商品</th>
+        <th>選択肢数</th>
+        <th>必須</th>
+        <th>複数選択</th>
+        <th>状態</th>
+        <th>表示順</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for opt in options %}
+      <tr>
+        <td><strong>{{ opt.option_name }}</strong></td>
+        <td>{{ opt.product_name }}</td>
+        <td>{{ opt.choice_count }}個</td>
+        <td>
+          {% if opt.required %}
+          <span class="badge">必須</span>
+          {% else %}
+          <span class="badge" style="background:#f3f4f6; border-color:#e5e7eb;">任意</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if opt.multiple %}
+          <span class="badge">可</span>
+          {% else %}
+          <span class="badge" style="background:#f3f4f6; border-color:#e5e7eb;">不可</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if opt.active %}
+          <span class="badge" style="background:#d1fae5; border-color:#a7f3d0; color:#065f46;">有効</span>
+          {% else %}
+          <span class="badge" style="background:#fee2e2; border-color:#fecaca; color:#991b1b;">無効</span>
+          {% endif %}
+        </td>
+        <td>{{ opt.display_order }}</td>
+        <td>
+          <div class="actions">
+            <a href="{{ url_for('admin_product_options_edit', option_id=opt.id) }}" class="btn sub" style="padding:6px 10px; font-size:12px;">編集</a>
+            <form method="post" action="{{ url_for('admin_product_options_delete', option_id=opt.id) }}" style="display:inline;" onsubmit="return confirm('本当に削除しますか？');">
+              <button type="submit" class="btn sub" style="padding:6px 10px; font-size:12px; background:#fee2e2; border-color:#fecaca; color:#991b1b;">削除</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color:var(--muted); text-align:center; padding:40px 0;">オプションが登録されていません。</p>
+  <div style="text-align:center;">
+    <a href="{{ url_for('admin_product_options_new') }}" class="btn">最初のオプションを作成</a>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-top:16px;">
+  <h3 style="font-size:16px; margin:0 0 12px;">オプション機能について</h3>
+  <p style="font-size:14px; color:var(--muted); line-height:1.6;">
+    商品オプション機能を使うと、焼酎の割り方、ラーメンのトッピング、ドリンクの温度指定など、
+    商品に対して選択肢を追加できます。
+  </p>
+  <ul style="font-size:14px; color:var(--muted); line-height:1.8;">
+    <li><strong>適用商品</strong>: 特定の商品のみ、または全商品共通で設定できます</li>
+    <li><strong>必須/任意</strong>: 必須にすると、注文時に必ず選択が必要になります</li>
+    <li><strong>複数選択</strong>: トッピングなど、複数の選択肢を同時に選べるようにできます</li>
+    <li><strong>追加料金</strong>: 選択肢ごとに追加料金を設定できます</li>
+  </ul>
+</div>
+{% endblock %}
+

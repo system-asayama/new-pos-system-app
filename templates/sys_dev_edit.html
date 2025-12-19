@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>開発者を編集: {{ dev.name }} <small>(ID {{ dev.id }})</small></h2>
+
+<div class="card" style="max-width:640px">
+  <form method="post" action="{{ url_for('sys_dev_update', did=dev.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ get_csrf() }}">
+
+    <label>氏名
+      <input type="text" name="name" value="{{ dev.name }}" required>
+    </label>
+    <label>ログインID
+      <input type="text" name="login_id" value="{{ dev.login_id }}" pattern="[A-Za-z0-9._-]{3,64}" required>
+    </label>
+    <label>役割
+      <select name="role">
+        {% for r in ['developer','lead','sysadmin'] %}
+          <option value="{{ r }}" {{ 'selected' if dev.role==r else '' }}>{{ r }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>有効
+      <select name="active">
+        <option value="1" {{ 'selected' if dev.active else '' }}>有効</option>
+        <option value="0" {{ 'selected' if not dev.active else '' }}>無効</option>
+      </select>
+    </label>
+
+    <details style="margin:10px 0">
+      <summary>パスワードをリセットする（任意）</summary>
+      <label>新パスワード <input type="password" name="new_password" minlength="8"></label>
+    </details>
+
+    <div style="margin-top:12px; display:flex; gap:8px;">
+      <button class="btn" type="submit">保存</button>
+      <a class="btn secondary" href="{{ url_for('sys_devs') }}">一覧へ戻る</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>テナント一覧</h2>
+
+<div class="grid">
+  {% for t in rows %}
+  <div class="card">
+    <h3 style="margin:0 0 6px">{{ t.名称 }} <span class="badge">{{ t.slug }}</span></h3>
+    <div class="small" style="color:var(--muted)">ID: {{ t.id }}</div>
+
+    <div class="actions" style="margin-top:12px">
+      <!-- 編集 -->
+      <a class="btn" href="{{ url_for('sys_tenant_edit', tid=t.id) }}">編集</a>
+
+      <!-- 削除（POST）-->
+      <form method="post" action="{{ url_for('sys_tenant_delete', tid=t.id) }}">
+        {% if get_csrf %}<input type="hidden" name="csrf_token" value="{{ get_csrf() }}">{% endif %}
+        <button class="btn sub" type="submit" onclick="return confirm('本当に削除しますか？（配下データは残ります）');">削除</button>
+      </form>
+
+      <!-- （任意）完全削除 -->
+      <form method="post" action="{{ url_for('sys_tenant_purge', tid=t.id) }}">
+        {% if get_csrf %}<input type="hidden" name="csrf_token" value="{{ get_csrf() }}">{% endif %}
+        <button class="btn sub" type="submit" onclick="return confirm('⚠ 取り消せません。テナント配下データを全削除します。実行しますか？');">パージ</button>
+      </form>
+
+      <!-- テナント管理者（アカウント）一覧/追加へ -->
+      <a class="btn sub" href="{{ url_for('sys_tenant_admins', tid=t.id) }}">アカウント管理</a>
+
+      <!-- 指定テナントのログイン画面へ（前室→正式URL） -->
+      <a class="btn sub" href="{{ url_for('tenant_admin_login_entry') }}?prefill={{ t.slug }}">ログイン</a>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- 新規作成 -->
+<div class="card" style="margin-top:16px">
+  <h3 style="margin:0 0 10px">テナント新規作成</h3>
+  <form method="post" action="{{ url_for('sys_tenants_new') }}">
+    {% if get_csrf %}<input type="hidden" name="csrf_token" value="{{ get_csrf() }}">{% endif %}
+    <label>名称</label><input name="name" required>
+    <label>slug</label><input name="slug" required placeholder="英小文字・数字・ハイフン">
+    <div class="actions" style="margin-top:10px"><button class="btn" type="submit">作成</button></div>
+  </form>
+</div>
+{% endblock %}

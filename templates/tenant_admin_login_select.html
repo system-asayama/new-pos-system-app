@@ -1,0 +1,30 @@
+<!-- templates/tenant_admin_login_select.html -->
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>テナント選択</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 24px; }
+    .box { max-width: 420px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px; }
+    label { display:block; margin: 12px 0 6px; }
+    input[type=text], button { font-size: 16px; padding: 10px; width: 100%; box-sizing: border-box; }
+    .error { color:#b00020; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h2>テナントを選択</h2>
+    <form method="post" action="{{ url_for('tenant_admin_login_entry') }}">
+      {% if get_csrf %}<input type="hidden" name="csrf_token" value="{{ get_csrf() }}">{% endif %}
+      <label for="tenant_slug">テナント識別子（slug）</label>
+      <input id="tenant_slug" name="tenant_slug" type="text" placeholder="例: company-a" required>
+      {% if error %}<div class="error">{{ error }}</div>{% endif %}
+      <div style="margin-top:14px">
+        <button type="submit">次へ</button>
+      </div>
+    </form>
+  </div>
+</body>
+</html>

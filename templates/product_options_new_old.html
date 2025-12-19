@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+  <h2>{{ title }}</h2>
+  
+  <form method="post">
+    <label>オプション名 <span style="color:var(--danger);">*</span></label>
+    <input type="text" name="option_name" placeholder="例: 割り方、トッピング、サイズ" required>
+    <p class="small" style="color:var(--muted); margin-top:4px;">
+      お客様に表示されるオプションの名前です。
+    </p>
+
+    <label>適用商品</label>
+    <select name="product_id">
+      <option value="">全商品共通</option>
+      {% for product in products %}
+      <option value="{{ product.id }}">{{ product.name }}</option>
+      {% endfor %}
+    </select>
+    <p class="small" style="color:var(--muted); margin-top:4px;">
+      特定の商品のみに適用する場合は選択してください。空欄の場合は全商品に適用されます。
+    </p>
+
+    <label>表示順</label>
+    <input type="number" name="display_order" value="0" min="0">
+    <p class="small" style="color:var(--muted); margin-top:4px;">
+      複数のオプションがある場合の表示順序です。小さい数字が先に表示されます。
+    </p>
+
+    <label>
+      <input type="checkbox" name="required" value="1" style="width:auto; margin-right:8px;">
+      必須選択にする
+    </label>
+    <p class="small" style="color:var(--muted); margin-top:4px; margin-left:28px;">
+      チェックすると、注文時に必ず選択が必要になります。
+    </p>
+
+    <label>
+      <input type="checkbox" name="multiple" value="1" style="width:auto; margin-right:8px;">
+      複数選択を許可する
+    </label>
+    <p class="small" style="color:var(--muted); margin-top:4px; margin-left:28px;">
+      チェックすると、複数の選択肢を同時に選べるようになります（例: トッピング）。
+    </p>
+
+    <label>
+      <input type="checkbox" name="active" value="1" checked style="width:auto; margin-right:8px;">
+      有効にする
+    </label>
+    <p class="small" style="color:var(--muted); margin-top:4px; margin-left:28px;">
+      無効にすると、メニュー画面に表示されなくなります。
+    </p>
+
+    <div style="margin-top:24px; display:flex; gap:12px;">
+      <button type="submit" class="btn">作成して選択肢を追加</button>
+      <a href="{{ url_for('admin_product_options') }}" class="btn sub">キャンセル</a>
+    </div>
+  </form>
+</div>
+
+<div class="card" style="margin-top:16px;">
+  <h3 style="font-size:16px; margin:0 0 12px;">💡 ヒント</h3>
+  <p style="font-size:14px; color:var(--muted); line-height:1.6;">
+    オプションを作成した後、選択肢（例: 水割り、お湯割り、ロック）を追加できます。
+    まずはオプションの基本情報を入力して作成してください。
+  </p>
+</div>
+{% endblock %}
+

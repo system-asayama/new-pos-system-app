@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>KDSカテゴリ</h2>
+
+<!-- 戻るボタン -->
+<div style="margin:8px 0 16px;">
+  {% if has_endpoint('admin_kds_home') %}
+    <a class="btn" href="{{ url_for('admin_kds_home') }}">← 戻る</a>
+  {% else %}
+    <a class="btn" href="javascript:history.back()">← 戻る</a>
+  {% endif %}
+</div>
+
+<!-- 追加フォーム -->
+<form method="post" style="margin:12px 0; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+  <input type="hidden" name="act" value="create">
+  <input name="name" placeholder="カテゴリ名" required>
+  <input name="order" type="number" placeholder="表示順(数字小さい順)" value="0" style="width:160px">
+  <button>＋追加</button>
+</form>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:70px;">ID</th>
+      <th>名称</th>
+      <th style="width:140px;">表示順</th>
+      <th style="width:120px;">有効</th>
+      <th style="width:220px;">操作</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for c in cats %}
+    <tr>
+      <!-- 行内編集 -->
+      <form method="post">
+        <input type="hidden" name="act" value="update">
+        <input type="hidden" name="id" value="{{ c.id }}">
+        <td>{{ c.id }}</td>
+        <td><input name="name" value="{{ c.名称 }}" required style="width:100%;"></td>
+        <td><input name="order" type="number" value="{{ c.表示順 }}" style="width:120px;"></td>
+        <td>
+          <select name="enabled" style="width:110px;">
+            <option value="1" {% if c.有効 %}selected{% endif %}>有効</option>
+            <option value="0" {% if not c.有効 %}selected{% endif %}>無効</option>
+          </select>
+        </td>
+        <td style="display:flex; gap:8px; align-items:center;">
+          <button class="btn">💾 保存</button>
+      </form>
+
+      <!-- 削除 -->
+      <form method="post" onsubmit="return confirm('「{{ c.名称 }}」を削除しますか？');" style="margin:0;">
+        <input type="hidden" name="act" value="delete">
+        <input type="hidden" name="id" value="{{ c.id }}">
+        <button class="btn sub" style="background:#fee2e2; border-color:#fecaca;">🗑 削除</button>
+      </form>
+        </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .dev-wrap{display:grid;gap:16px}
+  .cards{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+  .card{border:1px solid #ddd;border-radius:10px;padding:16px;background:#fff}
+  .card h3{margin:.2rem 0 .8rem}
+  .muted{color:#666}
+  .mono{font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+  table{border-collapse:collapse;width:100%}
+  th,td{border:1px solid #e5e7eb;padding:6px 8px}
+  th{background:#f8fafc;text-align:left}
+  .row{display:flex;gap:8px;flex-wrap:wrap}
+  .row > *{flex:1 1 180px}
+  input[type="text"],input[type="password"],textarea,select{
+    width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:8px
+  }
+  textarea{min-height:88px}
+  .btn{display:inline-block;background:#111827;color:#fff;padding:8px 14px;border-radius:8px;border:none;cursor:pointer;text-decoration:none}
+  .btn.secondary{background:#334155}
+  .btn.small{padding:6px 10px;font-size:.9em}
+  .hint{font-size:.9em;color:#555;margin-top:.25rem}
+  .ok{color:#16a34a}.ng{color:#dc2626}
+</style>
+
+<h2>開発者専用ページ（SysAdmin）</h2>
+<p class="muted">テナントの管理とデータ移行のユーティリティ。アクセスは SysAdmin のみ。</p>
+
+{% if session.get('sysadmin_role') in ['sysadmin','lead'] %}
+  <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+    <div>
+      <strong>開発者の管理</strong>
+      <div class="hint">新しい開発者アカウントを招待・追加できます（権限: SysAdmin / Lead）。</div>
+    </div>
+    <a class="btn" href="{{ url_for('sys_devs_new_form') }}">+ 開発者を招待 / 追加</a>
+  </div>
+{% endif %}
+
+<div class="dev-wrap">
+
+  <!-- 概要・環境 -->
+  <div class="cards">
+    <div class="card">
+      <h3>環境情報</h3>
+      <ul>
+        <li>APP_TITLE: <b>{{ APP_TITLE }}</b></li>
+        <li>モード: <code class="mono">{{ MULTI_TENANT_MODE }}</code></li>
+        <li>DATABASE_URL: <code class="mono">{{ db_url }}</code></li>
+        <li>現在のテナント: <code class="mono">{{ current_tenant_slug }}</code></li>
+        <li>時刻: {{ now }}</li>
+      </ul>
+      <p class="hint">※ ここから下は<strong>本番データに影響</strong>します。操作は慎重に！</p>
+    </div>
+
+    <div class="card">
+      <h3>テーブル件数</h3>
+      <table>
+        <thead><tr><th>テーブル</th><th>件数</th></tr></thead>
+        <tbody>
+          {% for row in counts %}
+            <tr>
+              <td><code class="mono">{{ row.table }}</code></td>
+              <td>{{ row.count }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if tenants is defined and tenants %}
+    <div class="card">
+      <h3>登録済みテナント</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th><th>名称</th><th>slug</th><th style="width:160px">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in tenants %}
+            <tr>
+              <td>{{ t.id }}</td>
+              <td>{{ t.名称 }}</td>
+              <td><code class="mono">{{ t.slug }}</code></td>
+              <td class="actions">
+                <a class="btn small secondary" href="{{ url_for('sys_tenant_edit', tid=t.id) }}">編集</a>
+                <a class="btn small" href="{{ url_for('sys_tenant_admins', tid=t.id) }}">管理者一覧</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="hint">※ db-per-tenant モードでは一覧が出ない場合があります。</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- アクション群 -->
+  <div class="cards">
+
+    <!-- 1) テナント新規作成 -->
+    <div class="card">
+      <h3>テナントを追加（初期店舗・初期管理者を自動作成）</h3>
+      <form method="post" action="{{ url_for('sys_tenants_new') }}">
+        <input type="hidden" name="csrf_token" value="{{ get_csrf() }}">
+        <div class="row">
+          <div>
+            <label>テナント名称
+              <input type="text" name="name" required placeholder="例）株式会社サンプル">
+            </label>
+          </div>
+          <div>
+            <label>slug
+              <input class="mono" type="text" name="slug" required
+                     pattern="[a-z0-9][a-z0-9-]{1,62}[a-z0-9]" placeholder="例）sample-corp">
+            </label>
+            <div class="hint">英小文字・数字・ハイフンのみ。先頭末尾は英数。</div>
+          </div>
+        </div>
+        <button class="btn" type="submit">作成する</button>
+      </form>
+      <div class="hint">作成時に <code class="mono">&lt;slug&gt;-main</code> 店舗と管理者（login: <code class="mono">admin</code>）を自動作成します。初期パスワードは完了画面にのみ表示。</div>
+    </div>
+
+    <!-- 2) 既存テナントへ管理者を追加（導線のみ） -->
+    <div class="card">
+      <h3>テナントに紐付く管理者を追加</h3>
+      <p class="hint">
+        管理者の追加は <strong>テナント一覧</strong> から対象テナントを開き、
+        「テナント管理者一覧」→「テナント管理者追加」で行います。
+      </p>
+      <a class="btn" href="{{ url_for('sys_tenants') }}">テナント一覧を開く</a>
+    </div>
+
+    <!-- 3) SQLite → PostgreSQL への移行 -->
+    <div class="card">
+      <h3>データ移行：SQLite → PostgreSQL</h3>
+      <form method="post" action="{{ url_for('sys_migrate') }}">
+        <input type="hidden" name="csrf_token" value="{{ get_csrf() }}">
+        <label>SQLite ファイルパス（または接続URL）
+          <input class="mono" type="text" name="sqlite_url" required placeholder="例）sqlite:///database.db">
+        </label>
+        <label>PostgreSQL 接続URL
+          <input class="mono" type="text" name="pg_url" required placeholder="例）postgresql://user:pass@host:5432/dbname">
+        </label>
+        <label>対象テーブル（カンマ区切り）
+          <textarea name="tables">{% if required_tables %}{{ required_tables|join(',') }}{% endif %}</textarea>
+        </label>
+        <div class="row">
+          <label><input type="checkbox" name="drop_before"> 事前に宛先テーブルを空にする（TRUNCATE）</label>
+          <label><input type="checkbox" name="dry_run"> ドライラン（件数のみ算出・コピーしない）</label>
+        </div>
+        <button class="btn secondary" type="submit">移行を実行</button>
+      </form>
+      <p class="hint">注意: 大量データの場合は時間がかかります。PK/制約は宛先DB側のスキーマに依存します。</p>
+      {% if migrate_result is defined %}
+        <hr>
+        <h4>実行結果</h4>
+        {% if migrate_result.ok %}
+          <p class="ok">OK: {{ migrate_result.message }}</p>
+          <table>
+            <thead><tr><th>テーブル</th><th>コピー件数</th></tr></thead>
+            <tbody>
+              {% for r in migrate_result.rows %}
+                <tr><td><code class="mono">{{ r.table }}</code></td><td>{{ r.count }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="ng">ERROR: {{ migrate_result.error }}</p>
+        {% endif %}
+      {% endif %}
+    </div>
+
+    <!-- 4) 開発者ログインID／パスワード変更（本人） -->
+    <div class="card">
+      <h3>開発者ログインID／パスワード変更（本人）</h3>
+      <p class="hint">現在ログインしている開発者アカウントのログインIDとパスワードを変更します。</p>
+      <form method="post" action="{{ url_for('sys_admins_update') }}">
+        <input type="hidden" name="csrf_token" value="{{ get_csrf() }}">
+        <label>現在のパスワード
+          <input type="password" name="current_password" required>
+        </label>
+
+        <label>新しいログインID（省略可）
+          <input type="text" name="new_username" placeholder="例）dev_taro" pattern="[A-Za-z0-9._-]{3,64}">
+        </label>
+        <div class="hint">英数字と . _ - が使用できます（3〜64文字）。</div>
+
+        <div class="row">
+          <div>
+            <label>新しいパスワード（省略可, 8文字以上）
+              <input type="password" name="new_password" minlength="8">
+            </label>
+          </div>
+          <div>
+            <label>新しいパスワード（確認）
+              <input type="password" name="confirm_password" minlength="8">
+            </label>
+          </div>
+        </div>
+
+        <div class="row" style="align-items:center">
+          <button class="btn" type="submit">変更する</button>
+          <a class="btn secondary" href="{{ url_for('sys_mypage') }}">詳細マイページへ</a>
+        </div>
+      </form>
+    </div>
+
+  </div>
+
+  <!-- ショートカット -->
+  <div class="cards">
+    <div class="card">
+      <h3>便利リンク</h3>
+      <ul>
+        <li><a href="{{ url_for('sys_tenants') }}">SysAdmin: テナント一覧</a></li>
+        <li><a href="{{ url_for('sys_admins') }}">開発者/SysAdmin 管理</a></li>
+        <li><a href="{{ url_for('sys_mypage') }}">開発者マイページ（ID/パス変更）</a></li>
+        {% if session.get('sysadmin_role') in ['sysadmin','lead'] %}
+          <li><a href="{{ url_for('sys_devs_new_form') }}">+ 開発者を招待 / 追加</a></li>
+        {% endif %}
+        <li><a href="{{ url_for('floor') }}">フロア画面</a></li>
+        <li><a href="{{ url_for('kds') }}">KDS画面</a></li>
+        <li><a href="{{ url_for('admin_tables') }}">テーブル管理</a></li>
+        <li><a href="{{ url_for('admin_printers') }}">プリンタ管理</a></li>
+        <li><a href="{{ url_for('admin_rules') }}">印刷ルール管理</a></li>
+        <li><a href="{{ url_for('payment_methods_json') }}">支払方法 JSON</a></li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

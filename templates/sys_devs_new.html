@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>開発者を招待 / 追加</h2>
+
+<div class="card" style="max-width:720px">
+  <form method="post" action="{{ url_for('sys_devs_create') }}" autocomplete="off">
+    <!-- 🔒 CSRF -->
+    <input type="hidden" name="csrf_token" value="{{ get_csrf() }}">
+
+    <div style="display:flex; gap:12px; flex-wrap:wrap">
+      <label style="flex:1 1 220px">氏名
+        <input type="text" name="name" required>
+      </label>
+
+      <label style="flex:1 1 220px">ログインID
+        <input type="text" name="login_id" required pattern="[A-Za-z0-9._-]{3,64}"
+               title="英数字と . _ - が使用できます（3〜64文字）">
+      </label>
+
+      <label style="flex:1 1 220px">パスワード
+        <input type="password" name="password" minlength="8" required>
+      </label>
+
+      <label style="flex:1 1 180px">役割
+        <select name="role" required>
+          {% for r in role_options %}
+            <option value="{{ r }}">{{ r }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label style="flex:0 0 140px">有効
+        <select name="active">
+          <option value="1" selected>有効</option>
+          <option value="0">無効</option>
+        </select>
+      </label>
+    </div>
+
+    {% if error %}
+      <p style="color:#dc2626; margin-top:8px">{{ error }}</p>
+    {% endif %}
+
+    <div style="margin-top:14px; display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+      <button class="btn" type="submit">追加する</button>
+      <a class="btn secondary" href="{{ url_for('sys_devs') }}">一覧へ戻る</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

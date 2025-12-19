@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>カテゴリ管理</h2>
+
+<div class="grid" style="grid-template-columns:360px 1fr">
+  <!-- 新規登録 -->
+  <div class="card">
+    <h3>新規カテゴリ</h3>
+    <form method="post" action="{{ url_for('admin_categories_new') }}">
+      <label>名称</label>
+      <input name="名称" required>
+
+      <label>親カテゴリ（任意）</label>
+      <select name="親カテゴリID">
+        <option value="">(なし)</option>
+        {% for c in cats %}
+          <option value="{{ c['id'] }}">
+            {{ ("&nbsp;&nbsp;" * ((c['depth']|int) - 1)) | safe }}{{ c['名称'] }}
+          </option>
+        {% endfor %}
+      </select>
+
+      <label>表示順</label>
+      <input name="表示順" type="number" value="0">
+
+      <div style="margin-top:12px">
+        <button class="btn" type="submit">追加</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- 一覧 -->
+  <div class="card">
+    <h3>一覧</h3>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:64px">#</th>
+          <th>名称</th>
+          <th style="width:140px">親</th>
+          <th style="width:96px">表示順</th>
+          <th style="width:72px">有効</th>
+          <th style="width:220px">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in cats %}
+          <tr>
+            <td>{{ c['id'] }}</td>
+            <td>{{ ("&nbsp;&nbsp;" * ((c['depth']|int) - 1)) | safe }}{{ c['名称'] }}</td>
+            <td>{{ c['親'] or '-' }}</td>
+            <td>{{ c['表示順'] }}</td>
+            <td>{{ '◯' if c['有効']==1 else '×' }}</td>
+            <td>
+              <div class="actions">
+                <a class="btn sub" href="{{ url_for('admin_categories_edit', cid=c['id']) }}">編集</a>
+                <form method="post" action="{{ url_for('admin_categories_toggle', cid=c['id']) }}" style="display:inline">
+                  <button class="btn sub" type="submit">{{ '無効化' if c['有効']==1 else '有効化' }}</button>
+                </form>
+                <form method="post" action="{{ url_for('admin_categories_delete', cid=c['id']) }}" style="display:inline" onsubmit="return confirm('削除しますか？子や商品割当がある場合は削除できません。')">
+                  <button class="btn sub" type="submit">削除</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+        {% if not cats %}
+          <tr><td colspan="6" class="small">カテゴリはまだありません。</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

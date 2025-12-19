@@ -1,0 +1,87 @@
+{# templates/staff_move_table.html #}
+{% extends "base.html" %}
+{% block content %}
+<h2>テーブル移動</h2>
+
+{# --- 戻り先の決定 ---
+  1) サーバから渡された back_url を最優先
+  2) 次に、存在するエンドポイントをロール無関係に優先順で選択
+#}
+{% set _has = (has_endpoint is defined) and has_endpoint %}
+{% set back_ep = None %}
+{% if not back_url %}
+  {% set back_ep = (
+    'admin_dashboard' if (_has and has_endpoint('admin_dashboard')) else
+    'admin_home'      if (_has and has_endpoint('admin_home'))      else
+    'admin_index'     if (_has and has_endpoint('admin_index'))     else
+    'admin_top'       if (_has and has_endpoint('admin_top'))       else
+    'staff_floor'     if (_has and has_endpoint('staff_floor'))     else
+    'staff_mypage'    if (_has and has_endpoint('staff_mypage'))    else
+    'staff_tables'    if (_has and has_endpoint('staff_tables'))    else
+    'staff_table_list'if (_has and has_endpoint('staff_table_list'))else
+    'index'           if (_has and has_endpoint('index'))           else
+    'home'            if (_has and has_endpoint('home'))            else
+    None
+  ) %}
+{% endif %}
+
+<div class="card" style="max-width:640px">
+  <div class="row-title">移動元</div>
+  <div class="small">テーブル: <strong>{{ src.table_no }}</strong>（ID: {{ src.table_id }}）</div>
+  {% if order %}
+    <div class="small">伝票ID: <strong>{{ order.id }}</strong> ／ 状態: <strong>{{ order.status }}</strong> ／ 合計: ¥{{ order.total|int }}</div>
+  {% else %}
+    <div class="small" style="color:var(--muted)">このテーブルに未クローズの伝票はありません。</div>
+  {% endif %}
+</div>
+
+{% if error %}
+  <div class="card warn" style="max-width:640px; margin-top:12px">
+    <div class="small"><strong>エラー:</strong> {{ error }}</div>
+  </div>
+{% endif %}
+
+<form method="post" class="card" style="max-width:640px; margin-top:12px">
+  <div class="row-title">移動先のテーブルを選択</div>
+
+  <div class="row">
+    <label for="dest_table_id">移動先テーブル</label>
+    <select id="dest_table_id" name="dest_table_id" required>
+      <option value="" disabled selected>選択してください</option>
+      {% for t in candidates %}
+        <option value="{{ t.id }}">テーブル {{ t.table_no }}（ID:{{ t.id }}）</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  {# 利用中テーブルへの挙動（禁止/マージ/スワップ）— 未指定は「禁止」 #}
+  <div class="row" style="margin-top:8px">
+    <label>移動先が利用中（未クローズ伝票あり）の場合</label>
+    <div class="small" style="color:var(--muted);margin-bottom:6px">未指定=禁止</div>
+    <label style="display:block"><input type="radio" name="conflict_mode" value="" checked> 禁止（エラーにする）</label>
+    <label style="display:block"><input type="radio" name="conflict_mode" value="merge"> マージ（移動元を移動先に統合）</label>
+    <label style="display:block"><input type="radio" name="conflict_mode" value="swap"> スワップ（両伝票のテーブル番号を入替）</label>
+  </div>
+
+  {% if csrf_token %}
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  {% endif %}
+
+  <div class="row" style="display:flex; gap:8px; flex-wrap:wrap">
+    <button class="btn" type="submit">このテーブルへ移動</button>
+
+    {# 戻り先：back_urlがあればそれを使用。無ければ back_ep を url_for。最後は history.back() #}
+    {% if back_url %}
+      <a class="btn sub" href="{{ back_url }}">キャンセル</a>
+    {% elif back_ep %}
+      <a class="btn sub" href="{{ url_for(back_ep) }}">キャンセル</a>
+    {% else %}
+      <button class="btn sub" type="button" onclick="history.back()">キャンセル</button>
+    {% endif %}
+  </div>
+
+  <div class="small" style="color:var(--muted); margin-top:6px">
+    ※同一店舗内でのみ移動可能です。
+  </div>
+</form>
+{% endblock %}

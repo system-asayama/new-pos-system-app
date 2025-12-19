@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>システム管理者ログイン</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body{font-family:sans-serif;margin:24px}
+    .card{max-width:420px;margin:0 auto;padding:20px;border:1px solid #ddd;border-radius:12px}
+    h1{font-size:20px;margin:0 0 12px}
+    label{display:block;margin:10px 0 4px}
+    input[type=text],input[type=password]{width:100%;padding:10px;border:1px solid #ccc;border-radius:8px}
+    .btn{margin-top:14px;padding:10px 14px;border:0;border-radius:8px;background:#222;color:#fff;cursor:pointer;width:100%}
+    .error{background:#ffe8e8;color:#b00020;padding:10px;border-radius:8px;margin-bottom:12px}
+    .muted{color:#666;font-size:13px}
+    .link{display:block;text-align:center;margin-top:14px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>システム管理者ログイン</h1>
+
+    {% if error %}
+      <div class="error">{{ error }}</div>
+    {% endif %}
+
+    <form method="post">
+      <label for="login_id">ログインID</label>
+      <input id="login_id" name="login_id" type="text" required autofocus>
+
+      <label for="password">パスワード</label>
+      <input id="password" name="password" type="password" required>
+
+      <button class="btn" type="submit">ログイン</button>
+    </form>
+
+    <a class="link" href="{{ url_for('sysadmin_bootstrap') }}">システム管理者をまだ作成していない方はこちら</a>
+    <p class="muted">※ 初回のみ「システム管理者の初期設定」から作成してください。</p>
+  </div>
+</body>
+</html>

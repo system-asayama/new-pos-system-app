@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>システム管理者 初期設定</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body{font-family:sans-serif;margin:24px}
+    .card{max-width:460px;margin:0 auto;padding:20px;border:1px solid #ddd;border-radius:12px}
+    h1{font-size:20px;margin:0 0 12px}
+    label{display:block;margin:10px 0 4px}
+    input[type=text],input[type=password]{width:100%;padding:10px;border:1px solid #ccc;border-radius:8px}
+    .btn{margin-top:14px;padding:10px 14px;border:0;border-radius:8px;background:#0b5;color:#fff;cursor:pointer;width:100%}
+    .error{background:#ffe8e8;color:#b00020;padding:10px;border-radius:8px;margin-bottom:12px}
+    .muted{color:#666;font-size:13px}
+    .link{display:block;text-align:center;margin-top:14px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>システム管理者の初期設定</h1>
+
+    {% if error %}
+      <div class="error">{{ error }}</div>
+    {% endif %}
+
+    <form method="post">
+      <label for="login_id">ログインID</label>
+      <input id="login_id" name="login_id" type="text" required>
+
+      <label for="password">パスワード</label>
+      <input id="password" name="password" type="password" required>
+
+      <label for="password_confirm">パスワード（確認用）</label>
+      <input id="password_confirm" name="password_confirm" type="password" required>
+
+      <label for="name">氏名</label>
+      <input id="name" name="name" type="text" required>
+
+      <button class="btn" type="submit">作成する</button>
+    </form>
+
+    <a class="link" href="{{ url_for('sysadmin_login') }}">既に作成済みの方はシステム管理者ログインへ</a>
+    <p class="muted">※ ここで作成できるのは最初の1名のみです。</p>
+  </div>
+</body>
+</html>

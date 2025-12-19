@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>テーブル {{ table_no }} 用 QR</h2>
+
+<div class="card" style="text-align:center">
+  <img src="{{ png_url }}" alt="QRコード" style="width:260px;height:260px;image-rendering:pixelated">
+  <div class="small" style="margin-top:8px">{{ access_url }}</div>
+  <div style="margin-top:12px">
+    <button class="btn" onclick="window.print()">印刷</button>
+    <a class="btn sub" href="{{ url_for('floor') }}">戻る</a>
+  </div>
+</div>
+{% endblock %}

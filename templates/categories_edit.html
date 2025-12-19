@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>カテゴリ編集</h2>
+
+<div class="grid" style="grid-template-columns:420px 1fr">
+  <div class="card">
+    <form method="post">
+      <label>名称</label>
+      <input name="名称" value="{{ cat.name }}" required>
+
+      <label>親カテゴリ（任意）</label>
+      <select name="親カテゴリID">
+        <option value="">(なし)</option>
+        {% for o in cat_options %}
+          <option value="{{ o.id }}" {% if o.id == cat.parent_id %}selected{% endif %}>
+            {{ ("&nbsp;&nbsp;" * ((o.depth|int) - 1)) | safe }}{{ o.name }}
+          </option>
+        {% endfor %}
+      </select>
+
+      <label>表示順</label>
+      <input name="表示順" type="number" value="{{ cat.display_order or 0 }}">
+
+      <label>状態</label>
+      <select name="有効">
+        <option value="1" {% if cat.active==1 %}selected{% endif %}>有効</option>
+        <option value="0" {% if cat.active!=1 %}selected{% endif %}>無効</option>
+      </select>
+
+      <div style="margin-top:12px">
+        <button class="btn" type="submit">保存</button>
+        <a class="btn sub" href="{{ url_for('admin_categories') }}">戻る</a>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>情報</h3>
+    <p class="small">ID: {{ cat.id }} / 更新日時: {{ cat.updated_at }}</p>
+    <p class="small">注意：親子関係は最大5階層です。循環（自分の子孫を親にするなど）は禁止しています。</p>
+  </div>
+</div>
+{% endblock %}
