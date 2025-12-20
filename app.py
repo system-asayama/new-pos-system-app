@@ -5648,6 +5648,7 @@ def admin_console():
         s.close()
 
     tiles = [
+        {"title": "店舗情報",     "desc": "レシート・領収書用の店舗情報",     "endpoint": "admin_store_info",      "emoji": "🏪"},
         {"title": "メニュー管理", "desc": "新規作成と作成済み一覧", "endpoint": "admin_menu_home", "emoji": "🍽️"},
         {"title": "テーブル管理", "desc": "テーブル番号の登録や並び替え",     "endpoint": "admin_tables",          "emoji": "🪑"},
         {"title": "カテゴリ管理", "desc": "商品カテゴリの作成・並び替え",     "endpoint": "admin_categories",      "emoji": "🗂️"},
@@ -5667,6 +5668,44 @@ def admin_console():
         # ★ テンプレートへ渡す
         require_join_pin=require_join_pin,
     )
+
+
+# ---------------------------------------------------------------------
+# 店舗情報編集ページ（レシート・領収書用）
+# ---------------------------------------------------------------------
+@app.route("/admin/store-info", methods=["GET", "POST"], endpoint="admin_store_info")
+@require_admin
+def admin_store_info():
+    """店舗情報編集ページ（レシート・領収書用）"""
+    sid = current_store_id()
+    if sid is None:
+        return redirect(url_for("admin_login"))
+    
+    s = SessionLocal()
+    try:
+        store = s.get(Store, sid)
+        if not store:
+            abort(404)
+        
+        if request.method == "POST":
+            # フォームからデータを取得して保存
+            store.住所 = request.form.get("住所", "").strip()
+            store.電話番号 = request.form.get("電話番号", "").strip()
+            store.登録番号 = request.form.get("登録番号", "").strip()
+            store.営業時間 = request.form.get("営業時間", "").strip()
+            store.レシートフッター = request.form.get("レシートフッター", "").strip()
+            
+            s.commit()
+            flash("店舗情報を保存しました。", "success")
+            return redirect(url_for("admin_store_info"))
+        
+        # GETリクエスト：編集フォームを表示
+        return render_template(
+            "admin_store_info.html",
+            store=store
+        )
+    finally:
+        s.close()
 
 
 # ★ 合流PINの ON/OFF を保存するルート ------------------------------
