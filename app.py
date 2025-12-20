@@ -1360,6 +1360,13 @@ class Store(TenantScoped, Base):
     # デフォルトは 1 (必須) としており、従来の動作との後方互換を維持します。
     require_join_pin = Column("合流PIN必須", Integer, nullable=False, default=1)
 
+    # --- レシート・領収書用情報 -----------------------------------------------------------
+    address = Column("住所", Text, nullable=True)  # 店舗の住所
+    phone = Column("電話番号", String, nullable=True)  # 店舗の電話番号
+    registration_number = Column("登録番号", String, nullable=True)  # インボイス登録番号
+    business_hours = Column("営業時間", String, nullable=True)  # 営業時間
+    receipt_footer = Column("レシートフッター", Text, nullable=True)  # レシート下部のメッセージ
+
     created_at = Column("作成日時", String, nullable=False, default=now_str)
     updated_at = Column("更新日時", String, nullable=False, default=now_str)
 
@@ -1983,6 +1990,20 @@ def migrate_schema_if_needed():
                 conn.exec_driver_sql('ALTER TABLE "T_商品カテゴリ付与" ADD COLUMN "表示順" INTEGER DEFAULT 0')
             if "税率" not in cols:
                 conn.exec_driver_sql('ALTER TABLE "T_商品カテゴリ付与" ADD COLUMN "税率" FLOAT')
+        
+        # M_店舗のレシート・領収書用情報の不足カラム
+        if "M_店舗" in tables:
+            cols = {c["name"] for c in insp.get_columns("M_店舗")}
+            if "住所" not in cols:
+                conn.exec_driver_sql('ALTER TABLE "M_店舗" ADD COLUMN "住所" TEXT')
+            if "電話番号" not in cols:
+                conn.exec_driver_sql('ALTER TABLE "M_店舗" ADD COLUMN "電話番号" TEXT')
+            if "登録番号" not in cols:
+                conn.exec_driver_sql('ALTER TABLE "M_店舗" ADD COLUMN "登録番号" TEXT')
+            if "営業時間" not in cols:
+                conn.exec_driver_sql('ALTER TABLE "M_店舗" ADD COLUMN "営業時間" TEXT')
+            if "レシートフッター" not in cols:
+                conn.exec_driver_sql('ALTER TABLE "M_店舗" ADD COLUMN "レシートフッター" TEXT')
 
         # 既存ロジック：主要マスター群が1つでも無ければ metadata 全体を作成
         need_new = False
@@ -2827,6 +2848,14 @@ def tenant_store_edit(sid):
             name = (request.form.get("name") or "").strip()
             code = (request.form.get("code") or "").strip()
             active = 1 if (request.form.get("active") or "1") == "1" else 0
+            
+            # レシート・領収書用情報
+            address = (request.form.get("address") or "").strip()
+            phone = (request.form.get("phone") or "").strip()
+            registration_number = (request.form.get("registration_number") or "").strip()
+            business_hours = (request.form.get("business_hours") or "").strip()
+            receipt_footer = (request.form.get("receipt_footer") or "").strip()
+            
             if not code or not name:
                 flash("店舗コード・名称は必須です。")
                 return redirect(request.url)
@@ -2834,8 +2863,19 @@ def tenant_store_edit(sid):
             dup = s.query(Store.id).filter(Store.code == code, Store.id != st.id).first()
             if dup:
                 flash("同じ店舗コードが既に存在します。"); return redirect(request.url)
-            st.code = code; st.name = name; st.active = active; st.updated_at = now_str()
-            s.commit(); flash("更新しました。")
+            
+            st.code = code
+            st.name = name
+            st.active = active
+            st.address = address or None
+            st.phone = phone or None
+            st.registration_number = registration_number or None
+            st.business_hours = business_hours or None
+            st.receipt_footer = receipt_footer or None
+            st.updated_at = now_str()
+            
+            s.commit()
+            flash("更新しました。")
             return redirect(url_for("tenant_stores"))
         # GET
         return render_template("tenant_store_edit.html", store=st)
