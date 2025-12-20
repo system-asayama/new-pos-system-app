@@ -275,8 +275,8 @@
           <button class="btn primary" style="margin-top:12px" id="submit-btn">この内容で送信</button>
           <div class="muted" id="submit-msg" style="margin-top:8px;"></div>
           
-          <!-- ▼ 店員呼び出しボタン -->
-          <button class="btn" style="margin-top:12px;background:#f59e0b;color:#fff;width:100%;font-size:16px;font-weight:600" id="call-staff-btn" type="button">
+          <!-- ▼ 店員呼び出しボタン（お客様のみ表示） -->
+          <button class="btn" style="margin-top:12px;background:#f59e0b;color:#fff;width:100%;font-size:16px;font-weight:600;display:none" id="call-staff-btn" type="button">
             🔔 店員を呼ぶ
           </button>
           <div class="muted" id="call-staff-msg" style="margin-top:8px;"></div>
@@ -1011,7 +1011,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
   
-  callStaffBtn?.addEventListener('click', callStaff);
+  // お客様（公開URL）の場合のみ店員呼び出しボタンを表示
+  if (IS_PUBLIC && callStaffBtn) {
+    callStaffBtn.style.display = 'block';
+    callStaffBtn.addEventListener('click', callStaff);
+  }
 
   // ===== 初期化 =====
   if (categoryList && menuGrid) {
