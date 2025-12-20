@@ -117,6 +117,15 @@
         <a class="btn" href="{{ url_for('table_detail', table_id=table_id) }}">明細</a>
       {% endif %}
       {% if order_id is not none %}
+        {# 印刷ボタン #}
+        <a class="btn" href="{{ url_for('table_detail', table_id=table_id) }}" target="_blank" rel="noopener">🖨️ 明細印刷</a>
+        
+        {# レシートと領収書：会計済みかつ会計完了前のみ表示 #}
+        {% if (paid_int > 0) and (not is_closed) %}
+          <a class="btn" href="{{ url_for('receipt_print', order_id=order_id) }}" target="_blank" rel="noopener">🧾 レシート</a>
+          <a class="btn" href="{{ url_for('invoice_print', order_id=order_id) }}" target="_blank" rel="noopener">📜 領収書</a>
+        {% endif %}
+        
         <button class="btn sub" onclick="openSettleModal({{ table_id }}, {{ order_id }})">会計</button>
 
         {# 取消：未クローズ & 既払>0 #}
