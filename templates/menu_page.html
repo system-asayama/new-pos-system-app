@@ -1014,14 +1014,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
   
-  // お客様（公開URL）の場合のみ店員呼び出しボタンを表示
-  console.log('[callStaffBtn] IS_PUBLIC:', IS_PUBLIC, 'data-is-public:', ds.isPublic, 'data-user-role:', ds.userRole);
-  if (IS_PUBLIC && callStaffBtn) {
+  // お客様（公開URL）かつスタッフログインではない場合のみ店員呼び出しボタンを表示
+  const userRole = ds.userRole || '';
+  const isStaff = ['staff','store_staff','store_admin','tenant_admin','sysadmin','admin','manager'].includes(userRole);
+  console.log('[callStaffBtn] IS_PUBLIC:', IS_PUBLIC, 'userRole:', userRole, 'isStaff:', isStaff);
+  if (IS_PUBLIC && !isStaff && callStaffBtn) {
     console.log('[callStaffBtn] ボタンを表示します');
     callStaffBtn.style.display = 'block';
     callStaffBtn.addEventListener('click', callStaff);
   } else {
-    console.log('[callStaffBtn] ボタンを非表示にします');
+    console.log('[callStaffBtn] ボタンを非表示にします（IS_PUBLIC:', IS_PUBLIC, ', isStaff:', isStaff, '）');
   }
 
   // ===== 初期化 =====
