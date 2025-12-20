@@ -5689,11 +5689,11 @@ def admin_store_info():
         
         if request.method == "POST":
             # フォームからデータを取得して保存
-            store.住所 = request.form.get("住所", "").strip()
-            store.電話番号 = request.form.get("電話番号", "").strip()
-            store.登録番号 = request.form.get("登録番号", "").strip()
-            store.営業時間 = request.form.get("営業時間", "").strip()
-            store.レシートフッター = request.form.get("レシートフッター", "").strip()
+            store.address = request.form.get("住所", "").strip()
+            store.phone = request.form.get("電話番号", "").strip()
+            store.registration_number = request.form.get("登録番号", "").strip()
+            store.business_hours = request.form.get("営業時間", "").strip()
+            store.receipt_footer = request.form.get("レシートフッター", "").strip()
             
             s.commit()
             flash("店舗情報を保存しました。", "success")

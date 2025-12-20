@@ -118,31 +118,31 @@
   <form method="POST">
     <div class="form-group">
       <label for="住所">住所</label>
-      <textarea id="住所" name="住所" placeholder="〒123-4567&#10;東京都渋谷区○○町1-2-3">{{ store.住所 or '' }}</textarea>
+      <textarea id="住所" name="住所" placeholder="〒123-4567&#10;東京都渋谷区○○町1-2-3">{{ store.address or '' }}</textarea>
       <div class="help-text">郵便番号と住所を入力してください</div>
     </div>
 
     <div class="form-group">
       <label for="電話番号">電話番号</label>
-      <input type="text" id="電話番号" name="電話番号" value="{{ store.電話番号 or '' }}" placeholder="03-1234-5678">
+      <input type="text" id="電話番号" name="電話番号" value="{{ store.phone or '' }}" placeholder="03-1234-5678">
       <div class="help-text">ハイフン付きで入力してください</div>
     </div>
 
     <div class="form-group">
       <label for="登録番号">登録番号（インボイス）</label>
-      <input type="text" id="登録番号" name="登録番号" value="{{ store.登録番号 or '' }}" placeholder="T1234567890123">
+      <input type="text" id="登録番号" name="登録番号" value="{{ store.registration_number or '' }}" placeholder="T1234567890123">
       <div class="help-text">適格請求書発行事業者の登録番号（Tから始まる13桁）</div>
     </div>
 
     <div class="form-group">
       <label for="営業時間">営業時間</label>
-      <input type="text" id="営業時間" name="営業時間" value="{{ store.営業時間 or '' }}" placeholder="11:00-23:00">
+      <input type="text" id="営業時間" name="営業時間" value="{{ store.business_hours or '' }}" placeholder="11:00-23:00">
       <div class="help-text">営業時間を入力してください</div>
     </div>
 
     <div class="form-group">
       <label for="レシートフッター">レシートフッター</label>
-      <textarea id="レシートフッター" name="レシートフッター" placeholder="ご来店ありがとうございました。&#10;またのお越しをお待ちしております。">{{ store.レシートフッター or '' }}</textarea>
+      <textarea id="レシートフッター" name="レシートフッター" placeholder="ご来店ありがとうございました。&#10;またのお越しをお待ちしております。">{{ store.receipt_footer or '' }}</textarea>
       <div class="help-text">レシート下部に表示するメッセージ</div>
     </div>
 
