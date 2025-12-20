@@ -926,10 +926,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let endpoint=''; let payload={};
     if(IS_PUBLIC){
       if(!token){ msgEl.textContent='token が取得できません。'; return; }
-      endpoint=window.location.origin + '/api/order'; payload={ token, items, memo };
+      endpoint='/api/order'; payload={ token, items, memo };
     }else{
       if(tableId==null){ msgEl.textContent='table_id を取得できません。URL に ?table_id= またはテンプレート埋め込みが必要です。'; return; }
-      endpoint=window.location.origin + '/admin/api/order';
+      endpoint='/admin/api/order';
       payload={ items, memo, table_id:tableId }; if(orderId!=null) payload.order_id=orderId;
     }
 
