@@ -890,7 +890,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btnSubmit.disabled = true; btnSubmit.textContent = (method==='POST'?'送信中...':'更新中...');
 
     try{
-      const j = await fetchJSON('/api/customer_detail',{
+      const j = await fetchJSON('{{ url_for("api_customer_detail") if api_customer_detail is defined else "/api/customer_detail" }}',{
         method,
         headers:{
           'Content-Type':'application/json',
@@ -926,7 +926,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let endpoint=''; let payload={};
     if(IS_PUBLIC){
       if(!token){ msgEl.textContent='token が取得できません。'; return; }
-      endpoint='/api/order'; payload={ token, items, memo };
+      endpoint='{{ url_for("api_order") if api_order is defined else "/api/order" }}'; payload={ token, items, memo };
     }else{
       if(tableId==null){ msgEl.textContent='table_id を取得できません。URL に ?table_id= またはテンプレート埋め込みが必要です。'; return; }
       endpoint='{{ url_for("staff_api_order") if staff_api_order is defined else "/admin/api/order" }}';
