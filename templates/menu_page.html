@@ -160,23 +160,6 @@
         注文明細
       </a>
 
-      {# 印刷ボタン：お客様用 #}
-      {% if order and order.id %}
-        {% set is_closed = order.status in ['closed', 'settled', 'canceled', 'cancelled', '会計済'] %}
-        {% set is_paying = order.status == '会計中' %}
-        
-        {# 明細印刷：会計前のみ表示 #}
-        {% if not is_paying and not is_closed %}
-          <a class="btn sub" href="{{ url_for('bill_print', order_id=order.id) }}" target="_blank" rel="noopener">🖨️ 明細印刷</a>
-        {% endif %}
-        
-        {# レシートと領収書：会計中かつ会計完了前のみ表示 #}
-        {% if is_paying and not is_closed %}
-          <a class="btn sub" href="{{ url_for('receipt_print', order_id=order.id) }}" target="_blank" rel="noopener">🧾 レシート</a>
-          <a class="btn sub" href="{{ url_for('invoice_print', order_id=order.id) }}" target="_blank" rel="noopener">📄 領収書</a>
-        {% endif %}
-      {% endif %}
-
       {# ★ Jinja: && → and に修正 #}
       {% if is_staff_or_higher and not is_public %}
         <span class="inline-actions">
