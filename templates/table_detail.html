@@ -260,6 +260,9 @@
   <a class="btn" href="{{ url_for('receipt_print', order_id=orders[0].id) }}" target="_blank" style="background: #2563eb; color: white;">
     📝 レシート印刷
   </a>
+  <a class="btn" href="{{ url_for('invoice_print', order_id=orders[0].id) }}" target="_blank" style="background: #059669; color: white;">
+    📄 領収書印刷
+  </a>
   {% endif %}
   <a id="btn-back" class="btn" href="{{ url_for('floor') }}">戻る</a>
 </div>

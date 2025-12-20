@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>領収書 - {{ store.name }}</title>
+    <style>
+        @media print {
+            @page {
+                size: A5 landscape;
+                margin: 15mm;
+            }
+            body {
+                margin: 0;
+                padding: 0;
+            }
+            .no-print {
+                display: none;
+            }
+        }
+        
+        body {
+            font-family: 'MS Gothic', 'Hiragino Kaku Gothic Pro', sans-serif;
+            font-size: 14px;
+            line-height: 1.6;
+            max-width: 210mm;
+            margin: 0 auto;
+            padding: 15mm;
+        }
+        
+        .invoice-container {
+            border: 2px solid #000;
+            padding: 20px;
+            min-height: 120mm;
+        }
+        
+        .invoice-header {
+            text-align: center;
+            border-bottom: 2px solid #000;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .invoice-header h1 {
+            font-size: 28px;
+            margin: 0 0 10px 0;
+            font-weight: bold;
+        }
+        
+        .invoice-number {
+            text-align: right;
+            font-size: 12px;
+            margin-bottom: 10px;
+        }
+        
+        .recipient-section {
+            margin-bottom: 20px;
+        }
+        
+        .recipient-name {
+            font-size: 20px;
+            font-weight: bold;
+            border-bottom: 1px solid #000;
+            padding-bottom: 5px;
+            margin-bottom: 10px;
+            display: inline-block;
+            min-width: 200px;
+        }
+        
+        .amount-section {
+            text-align: center;
+            margin: 30px 0;
+        }
+        
+        .amount-label {
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+        
+        .amount-value {
+            font-size: 32px;
+            font-weight: bold;
+            border: 2px solid #000;
+            padding: 10px 20px;
+            display: inline-block;
+            min-width: 200px;
+        }
+        
+        .amount-note {
+            font-size: 12px;
+            margin-top: 5px;
+            text-align: center;
+        }
+        
+        .details-section {
+            margin: 20px 0;
+        }
+        
+        .details-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        
+        .details-table th,
+        .details-table td {
+            border: 1px solid #000;
+            padding: 8px;
+            text-align: left;
+        }
+        
+        .details-table th {
+            background: #f0f0f0;
+            font-weight: bold;
+        }
+        
+        .details-table td.right {
+            text-align: right;
+        }
+        
+        .store-info {
+            margin-top: 30px;
+            text-align: right;
+            font-size: 12px;
+            line-height: 1.8;
+        }
+        
+        .store-info .store-name {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .stamp-area {
+            width: 60px;
+            height: 60px;
+            border: 1px solid #000;
+            display: inline-block;
+            margin-left: 20px;
+            vertical-align: middle;
+        }
+        
+        .no-print {
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 4px;
+            margin: 0 5px;
+        }
+        
+        .btn:hover {
+            background: #45a049;
+        }
+        
+        .btn.secondary {
+            background: #666;
+        }
+        
+        .btn.secondary:hover {
+            background: #555;
+        }
+        
+        .form-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        .form-section label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        .form-section input {
+            width: 100%;
+            padding: 8px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print form-section">
+        <label for="recipient-input">宛名を入力してください：</label>
+        <input type="text" id="recipient-input" placeholder="例: 株式会社〇〇" value="{{ recipient or '' }}">
+        <button class="btn" onclick="updateRecipient()" style="margin-top: 10px;">更新</button>
+    </div>
+    
+    <div class="invoice-container">
+        <div class="invoice-number">
+            No. {{ invoice_number }}
+        </div>
+        
+        <div class="invoice-header">
+            <h1>領　収　書</h1>
+        </div>
+        
+        <div class="recipient-section">
+            <span class="recipient-name" id="recipient-display">{{ recipient or '　　　　　　　　　　' }}</span> 様
+        </div>
+        
+        <div class="amount-section">
+            <div class="amount-label">下記の通り、正に領収いたしました</div>
+            <div class="amount-value">¥ {{ "{:,}".format(order.total) }}</div>
+            <div class="amount-note">（内消費税 ¥{{ "{:,}".format(order.tax) }}）</div>
+        </div>
+        
+        <div class="details-section">
+            <strong>但し書き：</strong> 飲食代として
+            
+            <table class="details-table">
+                <thead>
+                    <tr>
+                        <th>商品名</th>
+                        <th style="width: 60px;">数量</th>
+                        <th style="width: 100px;">金額</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in order.items %}
+                    <tr>
+                        <td>{{ item.menu.name }}</td>
+                        <td class="right">{{ item.qty }}</td>
+                        <td class="right">¥{{ "{:,}".format(item.unit_price * item.qty) }}</td>
+                    </tr>
+                    {% endfor %}
+                    <tr>
+                        <td colspan="2" style="text-align: right; font-weight: bold;">小計</td>
+                        <td class="right">¥{{ "{:,}".format(order.subtotal) }}</td>
+                    </tr>
+                    <tr>
+                        <td colspan="2" style="text-align: right; font-weight: bold;">消費税</td>
+                        <td class="right">¥{{ "{:,}".format(order.tax) }}</td>
+                    </tr>
+                    <tr style="background: #f0f0f0;">
+                        <td colspan="2" style="text-align: right; font-weight: bold; font-size: 16px;">合計</td>
+                        <td class="right" style="font-weight: bold; font-size: 16px;">¥{{ "{:,}".format(order.total) }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="store-info">
+            <div>発行日：{{ issue_date }}</div>
+            <div class="store-name">{{ store.name }} <span class="stamp-area"></span></div>
+            {% if store.address %}
+            <div>{{ store.address }}</div>
+            {% endif %}
+            {% if store.phone %}
+            <div>TEL: {{ store.phone }}</div>
+            {% endif %}
+            {% if store.registration_number %}
+            <div>登録番号: {{ store.registration_number }}</div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <div class="no-print">
+        <button class="btn" onclick="window.print()">印刷</button>
+        <button class="btn secondary" onclick="window.close()">閉じる</button>
+    </div>
+    
+    <script>
+        function updateRecipient() {
+            const input = document.getElementById('recipient-input');
+            const display = document.getElementById('recipient-display');
+            const value = input.value.trim();
+            
+            if (value) {
+                display.textContent = value;
+                // URLパラメータを更新（履歴に残さない）
+                const url = new URL(window.location);
+                url.searchParams.set('recipient', value);
+                window.history.replaceState({}, '', url);
+            } else {
+                display.textContent = '　　　　　　　　　　';
+            }
+        }
+        
+        // Enterキーで更新
+        document.getElementById('recipient-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                updateRecipient();
+            }
+        });
+    </script>
+</body>
+</html>

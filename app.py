@@ -16921,6 +16921,57 @@ def receipt_print(order_id):
         s.close()
 
 
+# ---------------------------------------------------------------------
+# 領収書印刷
+# ---------------------------------------------------------------------
+@app.route("/invoice/<int:order_id>")
+def invoice_print(order_id):
+    """領収書印刷画面"""
+    sid = current_store_id()
+    if sid is None:
+        return redirect(url_for("admin_login"))
+    
+    s = SessionLocal()
+    try:
+        # 注文情報を取得
+        order = s.query(OrderHeader).options(
+            joinedload(OrderHeader.items).joinedload(OrderItem.menu),
+            joinedload(OrderHeader.table)
+        ).filter(
+            OrderHeader.id == order_id,
+            OrderHeader.store_id == sid
+        ).first()
+        
+        if not order:
+            abort(404)
+        
+        # 店舗情報を取得
+        store = s.get(Store, sid)
+        if not store:
+            abort(404)
+        
+        # 領収書番号を生成（店舗ID + 注文IDを組み合わせ）
+        invoice_number = f"{sid:04d}-{order_id:06d}"
+        
+        # 発行日（今日の日付）
+        from datetime import datetime
+        issue_date = datetime.now().strftime("%Y年%m月%d日")
+        
+        # 宛名（URLパラメータから取得）
+        recipient = request.args.get("recipient", "")
+        
+        return render_template(
+            "invoice_print.html",
+            store=store,
+            order=order,
+            invoice_number=invoice_number,
+            issue_date=issue_date,
+            recipient=recipient
+        )
+    finally:
+        s.close()
+
+
 if __name__ == "__main__":
     # 既存のDBに不足しているカラムを追加する処理
     print("Migrating schema to add new columns...")
