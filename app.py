@@ -8493,7 +8493,7 @@ def admin_order_summary(order_id: int):
             
             # 時価商品の場合、actual_priceを使用
             menu = getattr(d, "menu", None)
-            is_market_price = getattr(menu, "時価", 0) if menu else 0
+            is_market_price = getattr(menu, "is_market_price", 0) if menu else 0
             actual_price = getattr(d, "実際価格", None)
             
             if menu:
@@ -8611,7 +8611,7 @@ def set_market_price(item_id):
         
         # 時価商品かどうか確認
         menu = getattr(item, "menu", None)
-        is_market_price = getattr(menu, "時価", 0) if menu else 0
+        is_market_price = getattr(menu, "is_market_price", 0) if menu else 0
         
         if not is_market_price:
             return jsonify({"ok": False, "error": "not a market price item"}), 400
@@ -17081,7 +17081,7 @@ def bill_print(order_id):
             
             # 時価商品の場合、実際価格を使用
             menu = item.menu
-            is_market_price = getattr(menu, "時価", 0) if menu else 0
+            is_market_price = getattr(menu, "is_market_price", 0) if menu else 0
             actual_price = getattr(item, "実際価格", None)
             
             if is_market_price and actual_price is not None:
@@ -17162,7 +17162,7 @@ def receipt_print(order_id):
             
             # 時価商品の場合、実際価格を使用
             menu = item.menu
-            is_market_price = getattr(menu, "時価", 0) if menu else 0
+            is_market_price = getattr(menu, "is_market_price", 0) if menu else 0
             actual_price = getattr(item, "実際価格", None)
             
             if is_market_price and actual_price is not None:
@@ -17250,7 +17250,7 @@ def invoice_print(order_id):
             
             # 時価商品の場合、実際価格を使用
             menu = item.menu
-            is_market_price = getattr(menu, "時価", 0) if menu else 0
+            is_market_price = getattr(menu, "is_market_price", 0) if menu else 0
             actual_price = getattr(item, "実際価格", None)
             
             if is_market_price and actual_price is not None:
