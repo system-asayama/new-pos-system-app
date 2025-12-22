@@ -8494,10 +8494,10 @@ def admin_order_summary(order_id: int):
                 or 0.10
             )
             
-            # 時価商品の場合、actual_priceを使用
+            # 時価商品の場合、actual_priceを使用（Python属性名を使用）
             menu = getattr(d, "menu", None)
             is_market_price = getattr(menu, "is_market_price", 0) if menu else 0
-            actual_price = getattr(d, "実際価格", None)
+            actual_price = getattr(d, "actual_price", None)
             
             if menu:
                 app.logger.debug(f"[summary] item_id={getattr(d, 'id', None)} menu.id={menu.id} menu.name={getattr(menu, '名称', None)} menu.is_market_price={getattr(menu, 'is_market_price', None)} menu.時価={getattr(menu, '時価', None)} is_market_price={is_market_price} actual_price={actual_price}")
@@ -17090,7 +17090,7 @@ def bill_print(order_id):
             # 時価商品の場合、実際価格を使用
             menu = item.menu
             is_market_price = getattr(menu, "is_market_price", 0) if menu else 0
-            actual_price = getattr(item, "実際価格", None)
+            actual_price = getattr(item, "actual_price", None)
             
             if is_market_price and actual_price is not None:
                 unit_excl = int(actual_price)
@@ -17171,7 +17171,7 @@ def receipt_print(order_id):
             # 時価商品の場合、実際価格を使用
             menu = item.menu
             is_market_price = getattr(menu, "is_market_price", 0) if menu else 0
-            actual_price = getattr(item, "実際価格", None)
+            actual_price = getattr(item, "actual_price", None)
             
             if is_market_price and actual_price is not None:
                 unit_excl = int(actual_price)
@@ -17259,7 +17259,7 @@ def invoice_print(order_id):
             # 時価商品の場合、実際価格を使用
             menu = item.menu
             is_market_price = getattr(menu, "is_market_price", 0) if menu else 0
-            actual_price = getattr(item, "実際価格", None)
+            actual_price = getattr(item, "actual_price", None)
             
             if is_market_price and actual_price is not None:
                 unit_excl = int(actual_price)
