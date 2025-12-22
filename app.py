@@ -7889,7 +7889,8 @@ def order_complete(order_id: int):
 
         CANCEL_WORDS = ("取消", "ｷｬﾝｾﾙ", "キャンセル", "cancel", "void")
 
-        qi = s.query(Item).filter(getattr(Item, "order_id") == order_id)
+        from sqlalchemy.orm import joinedload
+        qi = s.query(Item).options(joinedload(Item.menu)).filter(getattr(Item, "order_id") == order_id)
         if hasattr(Item, "store_id") and sid_eff is not None:
             qi = qi.filter(getattr(Item, "store_id") == sid_eff)
         items = qi.all()
@@ -8457,7 +8458,8 @@ def admin_order_summary(order_id: int):
         tax_total     = 0
         total_incl    = 0
 
-        qi = s.query(Item).filter(getattr(Item, "order_id") == order_id)
+        from sqlalchemy.orm import joinedload
+        qi = s.query(Item).options(joinedload(Item.menu)).filter(getattr(Item, "order_id") == order_id)
         if hasattr(Item, "store_id") and sid_eff is not None:
             qi = qi.filter(getattr(Item, "store_id") == sid_eff)
         items = qi.all()
@@ -8498,7 +8500,7 @@ def admin_order_summary(order_id: int):
                 # 時価商品で価格が未設定
                 market_price_items.append({
                     "id": getattr(d, "id", None),
-                    "name": getattr(d, "name", None) or (getattr(menu, "name", "") if menu else ""),
+                    "name": getattr(menu, "名称", "") if menu else "",
                     "qty": qty,
                 })
                 # 合計には含めない
