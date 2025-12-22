@@ -310,6 +310,7 @@ async function openSettleModal(table_id, order_id){
   try{
     const r2 = await fetch(`/admin/order/${order_id}/summary`, {cache:'no-store'});
     const j2 = await r2.json();
+    console.log('[openSettleModal] Summary response:', j2);
     if(!j2.ok) throw new Error(j2.error || 'summary load failed');
     const sm = j2;  // APIは直接トップレベルに値を返す
     const {ready, pending} = canSettleFromSummary(sm);
@@ -327,7 +328,9 @@ async function openSettleModal(table_id, order_id){
 
     // 時価商品がある場合は警告を表示
     if (_settle_ctx.market_price_items.length > 0) {
+      console.log('[openSettleModal] Market price items:', _settle_ctx.market_price_items);
       const itemNames = _settle_ctx.market_price_items.map(it => `${it.name} x${it.qty}`).join(', ');
+      console.log('[openSettleModal] Item names:', itemNames);
       const go = confirm(`時価商品が含まれています: ${itemNames}\n\n会計前に価格を設定する必要があります。\n価格設定画面を開きますか？`);
       if (go) {
         await showMarketPriceModal();
@@ -347,6 +350,7 @@ async function openSettleModal(table_id, order_id){
     document.getElementById('settle-summary').innerHTML =
       `合計: <strong>${yen(_settle_ctx.total)}</strong> ／ 既払: <strong>${yen(_settle_ctx.paid)}</strong> ／ 残額: <strong>${yen(_settle_ctx.remaining)}</strong>`;
   }catch(e){
+    console.error('[openSettleModal] Error:', e);
     alert('注文サマリの取得に失敗しました。');
     return;
   }
