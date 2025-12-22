@@ -247,6 +247,41 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY")
 if not app.secret_key:
     raise RuntimeError("FLASK_SECRET_KEY is required")
 
+# -----------------------------------------------------------------------------
+# データベースマイグレーション（アプリケーション起動時に実行）
+# -----------------------------------------------------------------------------
+def run_migrations():
+    """Herokuでも実行されるように、アプリケーション初期化時にマイグレーションを実行"""
+    from sqlalchemy import text
+    print("[MIGRATION] Running database migrations...")
+    
+    eng = _shared_engine_or_none()
+    if eng is None:
+        print("[MIGRATION] No database engine available, skipping migrations.")
+        return
+    
+    with eng.begin() as conn:
+        # 時価機能用のカラムを追加
+        try:
+            conn.execute(text('ALTER TABLE "m_メニュー" ADD COLUMN IF NOT EXISTS "時価" INTEGER NOT NULL DEFAULT 0'))
+            print("[MIGRATION] Added column '時価' to m_メニュー table.")
+        except Exception as e:
+            print(f"[MIGRATION] Failed to add '時価' column: {e}")
+        
+        try:
+            conn.execute(text('ALTER TABLE "t_注文明細" ADD COLUMN IF NOT EXISTS "実際価格" INTEGER'))
+            print("[MIGRATION] Added column '実際価格' to t_注文明細 table.")
+        except Exception as e:
+            print(f"[MIGRATION] Failed to add '実際価格' column: {e}")
+    
+    print("[MIGRATION] Database migrations completed.")
+
+# マイグレーションを実行（アプリケーション起動時に1回だけ実行）
+try:
+    run_migrations()
+except Exception as e:
+    print(f"[MIGRATION] Migration failed: {e}")
+    # マイグレーションが失敗してもアプリケーションは起動する
 
 # -----------------------------------------------------------------------------
 # 初期設定
