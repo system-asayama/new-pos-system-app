@@ -24,6 +24,12 @@
         （現在の入力モード: {{ '税抜' if price_input_mode == 'excl' else '税込' }}）
       </span>
     </label>
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px">
+      <label style="margin:0; display:flex; align-items:center; gap:6px">
+        <input type="checkbox" id="is-market-price" name="時価" value="1" onchange="toggleMarketPrice()">
+        <span>時価（価格未定）</span>
+      </label>
+    </div>
     <input id="price-input" name="価格" type="number" required
            placeholder="{{ '税抜価格' if price_input_mode == 'excl' else '税込価格' }}"
            inputmode="numeric" min="0" step="1">
@@ -185,6 +191,21 @@ function computeLive(){
 function bindLiveHandlers(root){
   (root.querySelectorAll ? root.querySelectorAll('select[name="cat_id[]"], input[name="cat_tax[]"], input[name="cat_order[]"]') : [])
     .forEach(el=>{ el.addEventListener('input', computeLive); el.addEventListener('change', computeLive); });
+}
+function toggleMarketPrice(){
+  const checkbox = document.getElementById('is-market-price');
+  const priceInput = document.getElementById('price-input');
+  if (checkbox && priceInput){
+    if (checkbox.checked){
+      priceInput.value = '0';
+      priceInput.disabled = true;
+      priceInput.required = false;
+    } else {
+      priceInput.disabled = false;
+      priceInput.required = true;
+    }
+    computeLive();
+  }
 }
 document.addEventListener('DOMContentLoaded', ()=>{
   document.getElementById('price-input')?.addEventListener('input', computeLive);

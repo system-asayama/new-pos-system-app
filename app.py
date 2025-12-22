@@ -1429,6 +1429,7 @@ class Menu(TenantScoped, Base):
     description = Column("説明", Text)
     available = Column("提供可否", Integer, nullable=False, default=1)  # 1/0
     tax_rate = Column("税率", Float, nullable=False, default=0.10)     # フォールバック税率
+    is_market_price = Column("時価", Integer, nullable=False, default=0)  # 0=通常価格, 1=時価
     display_order = Column("表示順", Integer, nullable=False, default=0)
     created_at = Column("作成日時", String, nullable=False, default=now_str)
     updated_at = Column("更新日時", String, nullable=False, default=now_str)
@@ -1505,6 +1506,7 @@ class OrderItem(TenantScoped, Base):
     qty = Column("数量", Integer, nullable=False)
     unit_price = Column("単価", Integer, nullable=False)  # 税抜
     tax_rate = Column("税率", Float, nullable=False)     # 実際に適用した税率
+    actual_price = Column("実際価格", Integer, nullable=True)  # 時価商品の場合、会計時に入力された実際の価格
     memo = Column("メモ", Text)
     status = Column("状態", String, nullable=False, default="新規")  # 新規/調理中/提供済/取消
     added_at = Column("追加日時", DateTime(timezone=True), nullable=False, default=lambda: datetime.utcnow())
@@ -8925,13 +8927,16 @@ def admin_menu_new():
         price_incl = _to_int(price_incl, price_excl)
         now = now_str()
 
+        # 時価フラグ
+        is_market_price = 1 if f.get("時価") == "1" else 0
+
         # INSERT
         insert_sql = text("""
             INSERT INTO M_メニュー
-                ("名称","価格","写真URL","説明","提供可否","税率","表示順",
+                ("名称","価格","写真URL","説明","提供可否","税率","時価","表示順",
                  "作成日時","更新日時","tenant_id","店舗ID","税込価格")
             VALUES
-                (:name,:price:photo,:desc,:avail,:rate,:disp,:created,:updated,:tenant_id,:store_id,:price_incl)
+                (:name,:price:photo,:desc,:avail,:rate,:is_market_price,:disp,:created,:updated,:tenant_id,:store_id,:price_incl)
         """.replace(":price:photo", ':price,:photo'))  # ← 文字列整形の安全策
         s.execute(insert_sql, {
             "name": (f.get("名称") or "").strip(),
@@ -8940,6 +8945,7 @@ def admin_menu_new():
             "desc": (f.get("説明") or None),
             "avail": 1,
             "rate": float(eff_rate),
+            "is_market_price": is_market_price,
             "disp": _to_int(f.get("表示順"), 0),
             "created": now,
             "updated": now,
