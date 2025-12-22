@@ -8434,6 +8434,9 @@ def admin_order_summary(order_id: int):
 
     s = SessionLocal()
     try:
+        # キャッシュをクリアして最新のデータを取得
+        s.expire_all()
+        
         Header = globals().get("OrderHeader")
         Item   = globals().get("OrderItem")
         Pay    = globals().get("PaymentRecord") or globals().get("T_支払")
