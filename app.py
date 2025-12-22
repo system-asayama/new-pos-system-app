@@ -17269,6 +17269,29 @@ if __name__ == "__main__":
 
     migrate_menu_price_incl()
 
+    # --- マイグレーション：時価機能用のカラムを追加 ---
+    def migrate_market_price():
+        eng = _shared_engine_or_none()
+        if eng is None:
+            return
+        with eng.begin() as conn:
+            # PostgreSQL用のマイグレーション
+            try:
+                # m_メニューテーブルに「時価」カラムを追加
+                conn.execute(text('ALTER TABLE "m_メニュー" ADD COLUMN IF NOT EXISTS "時価" INTEGER NOT NULL DEFAULT 0'))
+                print("Added column '時価' to m_メニュー table.")
+            except Exception as e:
+                print(f"[MIGRATE] Failed to add '時価' column: {e}")
+            
+            try:
+                # t_注文明細テーブルに「実際価格」カラムを追加
+                conn.execute(text('ALTER TABLE "t_注文明細" ADD COLUMN IF NOT EXISTS "実際価格" INTEGER'))
+                print("Added column '実際価格' to t_注文明細 table.")
+            except Exception as e:
+                print(f"[MIGRATE] Failed to add '実際価格' column: {e}")
+    
+    migrate_market_price()
+
     # ★★ 新規追加：進捗テーブルのマイグレーション＆初期シード
     try:
         migrate_progress_table()
