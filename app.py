@@ -248,42 +248,6 @@ if not app.secret_key:
     raise RuntimeError("FLASK_SECRET_KEY is required")
 
 # -----------------------------------------------------------------------------
-# データベースマイグレーション（アプリケーション起動時に実行）
-# -----------------------------------------------------------------------------
-def run_migrations():
-    """Herokuでも実行されるように、アプリケーション初期化時にマイグレーションを実行"""
-    from sqlalchemy import text
-    print("[MIGRATION] Running database migrations...")
-    
-    eng = _shared_engine_or_none()
-    if eng is None:
-        print("[MIGRATION] No database engine available, skipping migrations.")
-        return
-    
-    with eng.begin() as conn:
-        # 時価機能用のカラムを追加
-        try:
-            conn.execute(text('ALTER TABLE "m_メニュー" ADD COLUMN IF NOT EXISTS "時価" INTEGER NOT NULL DEFAULT 0'))
-            print("[MIGRATION] Added column '時価' to m_メニュー table.")
-        except Exception as e:
-            print(f"[MIGRATION] Failed to add '時価' column: {e}")
-        
-        try:
-            conn.execute(text('ALTER TABLE "t_注文明細" ADD COLUMN IF NOT EXISTS "実際価格" INTEGER'))
-            print("[MIGRATION] Added column '実際価格' to t_注文明細 table.")
-        except Exception as e:
-            print(f"[MIGRATION] Failed to add '実際価格' column: {e}")
-    
-    print("[MIGRATION] Database migrations completed.")
-
-# マイグレーションを実行（アプリケーション起動時に1回だけ実行）
-try:
-    run_migrations()
-except Exception as e:
-    print(f"[MIGRATION] Migration failed: {e}")
-    # マイグレーションが失敗してもアプリケーションは起動する
-
-# -----------------------------------------------------------------------------
 # 初期設定
 # -----------------------------------------------------------------------------
 app.config['ALLOW_DIRECT_REFUND'] = False  # 返金ボタンを非表示
@@ -1030,6 +994,33 @@ def _shared_engine_or_none():
     if MULTI_TENANT_MODE != "shared":
         return None
     return engine
+
+
+# --- データベースマイグレーション ---------------------------------------------
+def run_migrations():
+    """アプリケーション起動時にデータベースマイグレーションを実行"""
+    print("[MIGRATION] Running database migrations...")
+    
+    eng = _shared_engine_or_none()
+    if eng is None:
+        print("[MIGRATION] No database engine available (not in shared mode), skipping migrations.")
+        return
+    
+    with eng.begin() as conn:
+        # 時価機能用のカラムを追加
+        try:
+            conn.execute(text('ALTER TABLE "m_メニュー" ADD COLUMN IF NOT EXISTS "時価" INTEGER NOT NULL DEFAULT 0'))
+            print("[MIGRATION] Added column '時価' to m_メニュー table.")
+        except Exception as e:
+            print(f"[MIGRATION] Failed to add '時価' column: {e}")
+        
+        try:
+            conn.execute(text('ALTER TABLE "t_注文明細" ADD COLUMN IF NOT EXISTS "実際価格" INTEGER'))
+            print("[MIGRATION] Added column '実際価格' to t_注文明細 table.")
+        except Exception as e:
+            print(f"[MIGRATION] Failed to add '実際価格' column: {e}")
+    
+    print("[MIGRATION] Database migrations completed.")
 
 
 # --- テナント行の読取（shared前提） ---------------------------------------------
@@ -8500,8 +8491,8 @@ def admin_order_summary(order_id: int):
             
             # 時価商品の場合、actual_priceを使用
             menu = getattr(d, "menu", None)
-            is_market_price = getattr(menu, "is_market_price", 0) if menu else 0
-            actual_price = getattr(d, "actual_price", None)
+            is_market_price = getattr(menu, "時価", 0) if menu else 0
+            actual_price = getattr(d, "実際価格", None)
             
             if is_market_price and actual_price is None:
                 # 時価商品で価格が未設定
@@ -8613,13 +8604,13 @@ def set_market_price(item_id):
         
         # 時価商品かどうか確認
         menu = getattr(item, "menu", None)
-        is_market_price = getattr(menu, "is_market_price", 0) if menu else 0
+        is_market_price = getattr(menu, "時価", 0) if menu else 0
         
         if not is_market_price:
             return jsonify({"ok": False, "error": "not a market price item"}), 400
         
-        # actual_priceを設定
-        item.actual_price = int(price)
+        # 実際価格を設定
+        setattr(item, "実際価格", int(price))
         s.commit()
         
         return jsonify({"ok": True})
@@ -9035,7 +9026,7 @@ def admin_menu_new():
 
         # INSERT
         insert_sql = text("""
-            INSERT INTO M_メニュー
+            INSERT INTO "M_メニュー"
                 ("名称","価格","写真URL","説明","提供可否","税率","時価","表示順",
                  "作成日時","更新日時","tenant_id","店舗ID","税込価格")
             VALUES
@@ -12158,7 +12149,7 @@ def menu_page(tenant_slug, token):
                     "price_incl": price_incl,
                     "photo_url": m.photo_url,
                     "description": m.description,
-                    "is_market_price": getattr(m, "is_market_price", 0),
+                    "is_market_price": getattr(m, "時価", 0),
                 })
             template_vars = {
                 "store": store_info,
@@ -17081,10 +17072,10 @@ def bill_print(order_id):
             unit_excl = int(item.unit_price or 0)
             rate = float(item.tax_rate or 0.10)
             
-            # 時価商品の場合、actual_priceを使用
+            # 時価商品の場合、実際価格を使用
             menu = item.menu
-            is_market_price = getattr(menu, "is_market_price", 0) if menu else 0
-            actual_price = getattr(item, "actual_price", None)
+            is_market_price = getattr(menu, "時価", 0) if menu else 0
+            actual_price = getattr(item, "実際価格", None)
             
             if is_market_price and actual_price is not None:
                 unit_excl = int(actual_price)
@@ -17162,10 +17153,10 @@ def receipt_print(order_id):
             unit_excl = int(item.unit_price or 0)
             rate = float(item.tax_rate or 0.10)
             
-            # 時価商品の場合、actual_priceを使用
+            # 時価商品の場合、実際価格を使用
             menu = item.menu
-            is_market_price = getattr(menu, "is_market_price", 0) if menu else 0
-            actual_price = getattr(item, "actual_price", None)
+            is_market_price = getattr(menu, "時価", 0) if menu else 0
+            actual_price = getattr(item, "実際価格", None)
             
             if is_market_price and actual_price is not None:
                 unit_excl = int(actual_price)
@@ -17250,10 +17241,10 @@ def invoice_print(order_id):
             unit_excl = int(item.unit_price or 0)
             rate = float(item.tax_rate or 0.10)
             
-            # 時価商品の場合、actual_priceを使用
+            # 時価商品の場合、実際価格を使用
             menu = item.menu
-            is_market_price = getattr(menu, "is_market_price", 0) if menu else 0
-            actual_price = getattr(item, "actual_price", None)
+            is_market_price = getattr(menu, "時価", 0) if menu else 0
+            actual_price = getattr(item, "実際価格", None)
             
             if is_market_price and actual_price is not None:
                 unit_excl = int(actual_price)
@@ -17326,6 +17317,12 @@ if __name__ == "__main__":
                 print(f"[MIGRATE] Failed to add '実際価格' column: {e}")
     
     migrate_market_price()
+    
+    # ★ 時価機能用のマイグレーションを実行
+    try:
+        run_migrations()
+    except Exception as e:
+        print(f"[MIGRATION] Migration failed: {e}")
 
     # ★★ 新規追加：進捗テーブルのマイグレーション＆初期シード
     try:
