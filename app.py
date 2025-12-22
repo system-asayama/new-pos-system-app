@@ -8622,11 +8622,11 @@ def set_market_price(item_id):
         if not is_market_price:
             return jsonify({"ok": False, "error": "not a market price item"}), 400
         
-        # 実際価格を設定
-        app.logger.info("[set_market_price] Setting 実際価格=%s for item_id=%s", int(price), item_id)
-        setattr(item, "実際価格", int(price))
+        # 実際価格を設定（Pythonの属性名を使用）
+        app.logger.info("[set_market_price] Setting actual_price=%s for item_id=%s", int(price), item_id)
+        item.actual_price = int(price)
         s.commit()
-        app.logger.info("[set_market_price] Successfully committed price for item_id=%s", item_id)
+        app.logger.info("[set_market_price] Successfully committed price for item_id=%s, actual_price=%s", item_id, item.actual_price)
         
         return jsonify({"ok": True})
     except Exception as e:
