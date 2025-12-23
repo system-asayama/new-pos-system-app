@@ -13546,11 +13546,16 @@ def staff_order(table_id):
                 order_id = o.id
                 break
         
+        # スタッフ名を取得
+        staff_name = session.get("username", "Unknown")
+        
         return render_template(
             "staff_order.html",
+            table={"id": table_id, "no": getattr(t, "table_no", table_id)},
             table_id=table_id,
             table_no=getattr(t, "table_no", table_id),
             order_id=order_id,
+            staff_name=staff_name,
             title=f"テーブル {getattr(t, 'table_no', table_id)} - 注文"
         )
     finally:
