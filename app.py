@@ -13516,6 +13516,47 @@ def staff_root():
     return redirect(url_for("staff_floor"))
 
 
+# --- [スタッフ] 注文ページ：時価商品の価格入力対応 -----------------------------------
+@app.route("/staff/order/<int:table_id>")
+@require_staff
+def staff_order(table_id):
+    """
+    スタッフ用注文ページ：時価商品の価格入力機能付き
+    """
+    sid = current_store_id()
+    if sid is None:
+        return redirect(url_for("staff_login"))
+    
+    s = SessionLocal()
+    try:
+        # テーブル存在確認
+        t = s.get(TableSeat, table_id)
+        if not t or (hasattr(t, "store_id") and t.store_id != sid):
+            return "Table not found", 404
+        
+        # 進行中の注文を取得
+        order_id = None
+        q = s.query(OrderHeader).filter(OrderHeader.table_id == table_id)
+        if hasattr(OrderHeader, "store_id"):
+            q = q.filter(OrderHeader.store_id == sid)
+        orders = q.order_by(OrderHeader.id.desc()).all()
+        for o in orders:
+            status = getattr(o, "status", "")
+            if status not in ["会計済", "closed", "paid"]:
+                order_id = o.id
+                break
+        
+        return render_template(
+            "staff_order.html",
+            table_id=table_id,
+            table_no=getattr(t, "table_no", table_id),
+            order_id=order_id,
+            title=f"テーブル {getattr(t, 'table_no', table_id)} - 注文"
+        )
+    finally:
+        s.close()
+
+
 # ---------------------------------------------------------------------
 # スタッフ用フロア画面（店舗縛り＋詳細デバッグ付き）
 # ---------------------------------------------------------------------
