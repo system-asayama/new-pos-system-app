@@ -168,10 +168,10 @@
                 税込 ￥{{ incl }}<br><span class="small muted">税抜 ￥{{ excl }}</span>
                 {% if d.get('is_market_price', False) %}
                   {% if excl == 0 %}
-                    <br><button class="btn btn-sm" onclick="openMarketPriceModal({{ did }}, '{{ name }}', {{ order_id }})"
+                    <br><button class="btn btn-sm" onclick="openMarketPriceModal({{ did }}, '{{ name }}', {{ hid }})"
                             style="margin-top:4px;font-size:0.8em;padding:2px 6px;background:#fbbf24;color:#000">💰 価格設定</button>
                   {% else %}
-                    <br><button class="btn btn-sm" onclick="openEditPriceModal({{ did }}, '{{ name }}', {{ order_id }}, {{ excl }}, {{ incl }})"
+                    <br><button class="btn btn-sm" onclick="openEditPriceModal({{ did }}, '{{ name }}', {{ hid }}, {{ excl }}, {{ incl }})"
                             style="margin-top:4px;font-size:0.8em;padding:2px 6px;background:#3b82f6;color:#fff">✏️ 価格修正</button>
                   {% endif %}
                 {% endif %}
