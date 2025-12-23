@@ -166,9 +166,14 @@
               <td>{{ qty }}</td>
               <td>
                 税込 ￥{{ incl }}<br><span class="small muted">税抜 ￥{{ excl }}</span>
-                {% if d.get('is_market_price', False) and excl == 0 %}
-                  <br><button class="btn btn-sm" onclick="openMarketPriceModal({{ did }}, '{{ name }}', {{ order_id }})"
-                          style="margin-top:4px;font-size:0.8em;padding:2px 6px">💰 価格設定</button>
+                {% if d.get('is_market_price', False) %}
+                  {% if excl == 0 %}
+                    <br><button class="btn btn-sm" onclick="openMarketPriceModal({{ did }}, '{{ name }}', {{ order_id }})"
+                            style="margin-top:4px;font-size:0.8em;padding:2px 6px;background:#fbbf24;color:#000">💰 価格設定</button>
+                  {% else %}
+                    <br><button class="btn btn-sm" onclick="openEditPriceModal({{ did }}, '{{ name }}', {{ order_id }}, {{ excl }}, {{ incl }})"
+                            style="margin-top:4px;font-size:0.8em;padding:2px 6px;background:#3b82f6;color:#fff">✏️ 価格修正</button>
+                  {% endif %}
                 {% endif %}
               </td>
               <td>税込 ¥{{ sub_incl }}<br><span class="small muted">税抜 ¥{{ sub_excl }}</span></td>
@@ -448,6 +453,30 @@
   </div>
 </div>
 
+<!-- 価格修正モーダル -->
+<div id="edit-price-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
+  <div style="background:white; padding:30px; border-radius:8px; max-width:500px; width:90%;">
+    <h3 style="margin-top:0">価格の修正</h3>
+    <p id="edit-price-item-name" style="font-weight:bold; margin-bottom:20px;"></p>
+    
+    <div style="margin-bottom:15px;">
+      <label style="display:block; margin-bottom:5px;">価格入力モード:</label>
+      <label style="margin-right:15px;"><input type="radio" name="edit_price_mode" value="excl"> 税抜価格で入力</label>
+      <label><input type="radio" name="edit_price_mode" value="incl" checked> 税込価格で入力</label>
+    </div>
+    
+    <div style="margin-bottom:20px;">
+      <label style="display:block; margin-bottom:5px;">価格（円）:</label>
+      <input type="number" id="edit-price-input" style="width:100%; padding:8px; font-size:1.1em;" min="0" step="1" />
+    </div>
+    
+    <div style="display:flex; gap:10px; justify-content:flex-end;">
+      <button class="btn" onclick="closeEditPriceModal()" style="background:#6b7280;">キャンセル</button>
+      <button class="btn" onclick="saveEditPrice()" style="background:#3b82f6; color:white;">保存</button>
+    </div>
+  </div>
+</div>
+
 <script>
   let _marketPriceContext = null;
   
@@ -488,6 +517,52 @@
         location.reload();
       } else {
         alert('エラー: ' + (json.error || '価格設定に失敗しました。'));
+      }
+    } catch (e) {
+      alert('通信エラー: ' + e.message);
+    }
+  }
+  
+  // 価格修正モーダル用の関数
+  let _editPriceContext = null;
+  
+  function openEditPriceModal(itemId, itemName, orderId, currentExcl, currentIncl) {
+    _editPriceContext = { itemId, itemName, orderId, currentExcl, currentIncl };
+    document.getElementById('edit-price-item-name').textContent = itemName;
+    document.getElementById('edit-price-input').value = currentIncl; // デフォルトで税込価格を表示
+    document.getElementById('edit-price-modal').style.display = 'flex';
+  }
+  
+  function closeEditPriceModal() {
+    document.getElementById('edit-price-modal').style.display = 'none';
+    _editPriceContext = null;
+  }
+  
+  async function saveEditPrice() {
+    if (!_editPriceContext) return;
+    
+    const price = parseInt(document.getElementById('edit-price-input').value);
+    if (!price || price <= 0) {
+      alert('有効な価格を入力してください。');
+      return;
+    }
+    
+    const mode = document.querySelector('input[name="edit_price_mode"]:checked').value;
+    
+    try {
+      const res = await fetch(`/admin/order_item/${_editPriceContext.itemId}/set_price`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ price, mode })
+      });
+      
+      const json = await res.json();
+      if (json.ok) {
+        alert('価格を修正しました。');
+        closeEditPriceModal();
+        location.reload();
+      } else {
+        alert('エラー: ' + (json.error || '価格修正に失敗しました。'));
       }
     } catch (e) {
       alert('通信エラー: ' + e.message);
