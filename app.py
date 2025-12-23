@@ -8618,7 +8618,7 @@ def set_market_price(item_id):
     data = request.get_json(force=True) or {}
     app.logger.info("[set_market_price] data=%s", data)
     price = data.get("price")
-    price_mode = data.get("price_mode", "excl")  # "excl" or "incl"
+    price_mode = data.get("mode", data.get("price_mode", "excl"))  # "excl" or "incl"
     app.logger.info("[set_market_price] price=%s, price_mode=%s", price, price_mode)
     
     if price is None or not isinstance(price, (int, float)) or price < 0:
