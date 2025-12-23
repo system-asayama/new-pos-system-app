@@ -8633,12 +8633,10 @@ def set_market_price(item_id):
         # 税込/税抜モードに応じて税抜価格を計算
         if price_mode == "incl":
             # 税込価格が入力された場合、税抜価格を逆算
-            from decimal import Decimal, ROUND_DOWN
-            price_decimal = Decimal(str(price))
-            tax_rate_decimal = Decimal(str(tax_rate))
-            # 税抜 = 税込 / (1 + 税率) を切り捨て
-            actual_price_excl = int((price_decimal / (Decimal('1') + tax_rate_decimal)).quantize(Decimal('1'), rounding=ROUND_DOWN))
-            app.logger.info("[set_market_price] price_mode=incl: input_price=%s -> actual_price_excl=%s", price, actual_price_excl)
+            # 税込合計が入力した金額と一致するように、税抜価格を切り上げ
+            import math
+            actual_price_excl = math.ceil(price / (1 + tax_rate))
+            app.logger.info("[set_market_price] price_mode=incl: input_price=%s -> actual_price_excl=%s (rounded up)", price, actual_price_excl)
         else:
             # 税抜価格が入力された場合、そのまま使用
             actual_price_excl = int(price)
