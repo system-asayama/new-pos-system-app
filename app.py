@@ -6542,7 +6542,12 @@ def floor():
                 if q > 0 and is_cancel_label:
                     continue
 
-                unit_excl = int(getattr(d, "unit_price", None) or getattr(d, "税抜単価", None) or 0)
+                # 時価商品の場合、actual_price（実際価格）を優先する
+                actual_price = getattr(d, "actual_price", None)
+                if actual_price is not None:
+                    unit_excl = int(actual_price)
+                else:
+                    unit_excl = int(getattr(d, "unit_price", None) or getattr(d, "税抜単価", None) or 0)
                 rate      = float(getattr(d, "tax_rate", None) or 0.10)
                 unit_tax  = int(math.floor(unit_excl * rate))
 
