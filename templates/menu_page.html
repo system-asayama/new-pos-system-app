@@ -672,6 +672,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ===== メニュー取得（AbortController + fetchJSON） =====
   let menusAbortCtrl = null;
   const __menuMap = new Map();
+  window.__menuMap = __menuMap;  // グローバル変数として設定
 
   async function loadMenus(categoryId){
     if (!menuGrid) return;
