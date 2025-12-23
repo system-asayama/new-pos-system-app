@@ -475,7 +475,7 @@
     const mode = document.querySelector('input[name="detail_price_mode"]:checked').value;
     
     try {
-      const res = await fetch(`/admin/order/item/${_marketPriceContext.itemId}/set_market_price`, {
+      const res = await fetch(`/admin/order/item/${_marketPriceContext.itemId}/set_price`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ price, mode })
