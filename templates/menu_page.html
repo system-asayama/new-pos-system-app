@@ -927,7 +927,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if(!cart.length){ msgEl.textContent='カゴが空です。'; return; }
     if (submitting) return;
 
-    const items=cart.map(x=>({menu_id:x.menu_id, qty:x.qty, memo:x.memo||''}));
+    const items=cart.map(x=>{
+      const item = {menu_id:x.menu_id, qty:x.qty, memo:x.memo||''};
+      // 時価商品の場合は価格データを含める
+      if (x.actual_price !== undefined && x.actual_price !== null) {
+        item.actual_price = x.actual_price;
+        item.price_mode = x.price_mode || 'excl';
+      }
+      return item;
+    });
     const memo=(document.getElementById('memo-global')?.value||'').trim();
 
     let endpoint=''; let payload={};
@@ -1082,6 +1090,12 @@ async function fetchMenuOptions(menuId) {
 async function openOptionModal(menu) {
   currentMenuForOptions = menu;
   selectedOptions = {};
+  
+  // 時価商品の場合は価格入力モーダルを表示
+  if (menu.is_market_price) {
+    openMarketPriceModal(menu);
+    return;
+  }
   
   const options = await fetchMenuOptions(menu.id);
   if (!options || options.length === 0) {
@@ -1257,7 +1271,120 @@ function addToCartWithOptions() {
 
 window.addToCartWithOptions = addToCartWithOptions;
 window.closeOptionModal = closeOptionModal;
+
+// ===== 時価商品価格入力機能 =====
+let currentMarketPriceMenu = null;
+
+function openMarketPriceModal(menu) {
+  currentMarketPriceMenu = menu;
+  const modal = document.getElementById('market-price-modal');
+  const menuNameEl = document.getElementById('market-price-menu-name');
+  const priceInput = document.getElementById('market-price-input');
+  
+  menuNameEl.textContent = menu.name || '時価商品';
+  priceInput.value = '';
+  
+  // デフォルトで税込を選択
+  const inclRadio = document.querySelector('input[name="market-price-mode"][value="incl"]');
+  if (inclRadio) inclRadio.checked = true;
+  
+  modal.style.display = 'flex';
+  priceInput.focus();
+}
+
+function closeMarketPriceModal() {
+  const modal = document.getElementById('market-price-modal');
+  modal.style.display = 'none';
+  currentMarketPriceMenu = null;
+}
+
+function saveMarketPrice() {
+  if (!currentMarketPriceMenu) return;
+  
+  const priceInput = document.getElementById('market-price-input');
+  const price = parseInt(priceInput.value, 10);
+  
+  if (!price || price <= 0) {
+    alert('有効な価格を入力してください。');
+    priceInput.focus();
+    return;
+  }
+  
+  const modeRadio = document.querySelector('input[name="market-price-mode"]:checked');
+  const mode = modeRadio ? modeRadio.value : 'incl';
+  
+  // 税率を取得
+  const taxRate = Number(currentMarketPriceMenu.tax_rate || 0.10);
+  
+  let priceExcl, priceIncl;
+  
+  if (mode === 'incl') {
+    // 税込価格が入力された場合、税抜価格を逆算（切り上げ）
+    priceIncl = price;
+    priceExcl = Math.ceil(price / (1 + taxRate));
+  } else {
+    // 税抜価格が入力された場合
+    priceExcl = price;
+    priceIncl = priceExcl + Math.floor(priceExcl * taxRate + 1e-9);
+  }
+  
+  // カートに追加
+  window.__cart.push({
+    menu_id: currentMarketPriceMenu.id,
+    name: currentMarketPriceMenu.name,
+    qty: 1,
+    rate: taxRate,
+    price_excl: priceExcl,
+    price_incl: priceIncl,
+    memo: '',
+    actual_price: priceExcl,  // 税抜価格を保存
+    price_mode: mode           // 入力モードを保存
+  });
+  
+  window.__renderCart();
+  closeMarketPriceModal();
+}
+
+window.openMarketPriceModal = openMarketPriceModal;
+window.closeMarketPriceModal = closeMarketPriceModal;
+window.saveMarketPrice = saveMarketPrice;
   </script>
+
+  <!-- 時価商品価格入力モーダル -->
+  <div id="market-price-modal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1001; align-items:center; justify-content:center;">
+    <div style="background:white; border-radius:12px; padding:24px; max-width:400px; width:90%;">
+      <h2 style="margin:0 0 16px;">時価商品の価格設定</h2>
+      <div style="margin-bottom:16px;">
+        <strong id="market-price-menu-name" style="font-size:18px;"></strong>
+      </div>
+      
+      <div style="margin-bottom:16px;">
+        <label style="display:block; margin-bottom:8px; font-weight:500;">価格入力モード</label>
+        <div style="display:flex; gap:16px;">
+          <label style="display:flex; align-items:center; cursor:pointer;">
+            <input type="radio" name="market-price-mode" value="incl" checked style="margin-right:6px;">
+            税込価格で入力
+          </label>
+          <label style="display:flex; align-items:center; cursor:pointer;">
+            <input type="radio" name="market-price-mode" value="excl" style="margin-right:6px;">
+            税抜価格で入力
+          </label>
+        </div>
+      </div>
+      
+      <div style="margin-bottom:16px;">
+        <label style="display:block; margin-bottom:8px; font-weight:500;">価格（円）</label>
+        <input type="number" id="market-price-input" min="0" step="1" 
+               style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; font-size:16px;"
+               placeholder="例: 5000">
+      </div>
+      
+      <div style="display:flex; gap:12px; margin-top:24px;">
+        <button class="btn sub" onclick="closeMarketPriceModal()" style="flex:1;">キャンセル</button>
+        <button class="btn primary" onclick="saveMarketPrice()" style="flex:1;">保存してカートに追加</button>
+      </div>
+    </div>
+  </div>
 
   <!-- 商品オプション選択モーダル -->
   <div id="option-modal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
