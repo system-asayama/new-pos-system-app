@@ -442,6 +442,13 @@ function addItemById(menu_id){
   const qtyInput = document.getElementById('qty-' + menu_id);
   const qty = Math.max(1, parseInt(qtyInput?.value || '1', 10));
   const {rate,excl,incl} = computePrices(m);
+  
+  // 時価商品（価格が0円）の場合、価格入力モーダルを表示
+  if (excl === 0) {
+    showMarketPriceModal(menu_id, m.name, qty);
+    return;
+  }
+  
   const idx = cart.findIndex(x => x.menu_id === menu_id && !x.memo);
   if (idx >= 0){ cart[idx].qty += qty; }
   else { cart.push({menu_id, name:m.name, qty, rate, price_excl:excl, price_incl:incl}); }
@@ -469,7 +476,13 @@ async function submitOrder(){
 
   const payload = {
     table_id: tableId,
-    items: cart.map(x => ({menu_id: x.menu_id, qty: x.qty, memo: x.memo || ''}))
+    items: cart.map(x => {
+      const item = {menu_id: x.menu_id, qty: x.qty, memo: x.memo || ''};
+      if (x.actual_price !== undefined) {
+        item.actual_price = x.actual_price;
+      }
+      return item;
+    })
   };
   try{
     const res = await fetch('{{ url_for("staff_api_order") }}', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
@@ -513,6 +526,92 @@ async function loadOrderDetails(){
     console.error("Failed to fetch order details:", e);
     document.getElementById('order-details-container').innerHTML = `<div class="small" style="color:var(--danger)">注文詳細の読み込み中にエラーが発生しました。</div>`;
   }
+}
+
+/* ========================= 時価商品の価格入力モーダル ========================= */
+const marketPriceModal = document.createElement('div');
+marketPriceModal.id = 'market-price-modal';
+marketPriceModal.style.cssText = 'display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center';
+marketPriceModal.innerHTML = `
+  <div style="background:#fff; border-radius:12px; padding:24px; max-width:400px; width:90%">
+    <h3 style="margin:0 0 16px">時価商品の価格設定</h3>
+    <div style="margin-bottom:12px"><strong id="market-item-name"></strong></div>
+    <div style="margin-bottom:12px">
+      <label><input type="radio" name="price-mode" value="excl" checked> 税抜価格で入力</label><br>
+      <label><input type="radio" name="price-mode" value="incl"> 税込価格で入力</label>
+    </div>
+    <div style="margin-bottom:16px">
+      <label>価格（円）</label><br>
+      <input id="market-price-input" type="number" min="0" step="1" style="width:100%; height:36px; border:1px solid var(--border); border-radius:8px; padding:0 8px">
+    </div>
+    <div style="display:flex; gap:8px; justify-content:flex-end">
+      <button class="btn sub" onclick="closeMarketPriceModal()">キャンセル</button>
+      <button class="btn" onclick="saveMarketPrice()">保存</button>
+    </div>
+  </div>
+`;
+document.body.appendChild(marketPriceModal);
+
+let pendingMarketItem = null;
+
+function showMarketPriceModal(menuId, menuName, qty) {
+  pendingMarketItem = { menuId, menuName, qty };
+  document.getElementById('market-item-name').textContent = menuName + ' x' + qty;
+  document.getElementById('market-price-input').value = '';
+  document.querySelector('input[name="price-mode"][value="excl"]').checked = true;
+  marketPriceModal.style.display = 'flex';
+}
+
+function closeMarketPriceModal() {
+  marketPriceModal.style.display = 'none';
+  pendingMarketItem = null;
+}
+
+function saveMarketPrice() {
+  if (!pendingMarketItem) return;
+  
+  const price = parseInt(document.getElementById('market-price-input').value || '0', 10);
+  if (price <= 0) {
+    alert('価格を入力してください。');
+    return;
+  }
+  
+  const mode = document.querySelector('input[name="price-mode"]:checked').value;
+  const m = __menuMap.get(pendingMarketItem.menuId);
+  if (!m) return;
+  
+  const rate = toRate(m.rate);
+  let excl, incl;
+  
+  if (mode === 'incl') {
+    // 税込価格で入力された場合、税抜価格を逆算（切り上げ）
+    excl = Math.ceil(price / (1 + rate));
+    incl = excl + Math.floor(excl * rate);
+  } else {
+    // 税抜価格で入力された場合
+    excl = price;
+    incl = excl + Math.floor(excl * rate);
+  }
+  
+  const idx = cart.findIndex(x => x.menu_id === pendingMarketItem.menuId && !x.memo);
+  if (idx >= 0) {
+    cart[idx].qty += pendingMarketItem.qty;
+    cart[idx].actual_price = excl;  // 税抜価格を保存
+  } else {
+    cart.push({
+      menu_id: pendingMarketItem.menuId,
+      name: m.name,
+      qty: pendingMarketItem.qty,
+      rate: rate,
+      price_excl: excl,
+      price_incl: incl,
+      actual_price: excl  // 税抜価格を保存
+    });
+  }
+  
+  ensureNotEmptyRow();
+  renderCart();
+  closeMarketPriceModal();
 }
 
 /* ========================= 起動時 ========================= */

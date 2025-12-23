@@ -13920,6 +13920,7 @@ def staff_api_order():
                 continue
 
             memo = (it.get("memo") or "").strip()
+            actual_price = it.get("actual_price")  # 時価商品の実際価格
             m = s.get(Menu, mid)
             if not (m and m.available == 1):
                 app.logger.debug("[staff_api_order] skip item (menu not available): id=%s", mid)
@@ -13927,6 +13928,11 @@ def staff_api_order():
 
             rate = resolve_effective_tax_rate_for_menu(s, mid, m.tax_rate)  # 例: 0.10
             unit = int(m.price)  # 税抜保存単価
+            
+            # 時価商品の場合、actual_priceを使用
+            if actual_price is not None:
+                unit = int(actual_price)
+                app.logger.info("[staff_api_order] market price item: menu_id=%s actual_price=%s", mid, unit)
 
             new_item = OrderItem(
                 order_id=order.id,
@@ -13938,6 +13944,10 @@ def staff_api_order():
                 status="新規",
                 added_at=now_str(),
             )
+            
+            # actual_priceをOrderItemに保存
+            if actual_price is not None and hasattr(new_item, 'actual_price'):
+                new_item.actual_price = int(actual_price)
             s.add(new_item)
             new_items_for_print.append(new_item)  # ★ 新しい明細をリストに追加
 
