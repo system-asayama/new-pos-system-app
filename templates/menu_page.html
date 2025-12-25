@@ -317,6 +317,10 @@
   </div>
 
   <script>
+// ===== グローバル変数 =====
+let IS_PUBLIC = false;
+let isStaff = false;
+
 document.addEventListener('DOMContentLoaded', () => {
   // ============== 共通：JSON専用フェッチ（HTML混入防止） ==============
   async function fetchJSON(url, options = {}) {
@@ -392,7 +396,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const pathToken = ((location.pathname.match(/\/m\/([^\/]+)/)||[])[1]) || null;
   const token     = urlToken || pathToken || null;
   // トークンがある場合は常にパブリックAPIを使用（スタッフログイン状態に関わらず）
-  const IS_PUBLIC = !!token;
+  IS_PUBLIC = !!token;
 
   // デバッグ
   const DEBUG = ['1','true','yes','on'].includes((qs.get('debug')||'').toLowerCase());
@@ -492,7 +496,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ===== ユーザー判定 =====
   const userRole = ds.userRole || '';
-  const isStaff = ['staff','store_staff','store_admin','tenant_admin','sysadmin','admin','manager'].includes(userRole);
+  isStaff = ['staff','store_staff','store_admin','tenant_admin','sysadmin','admin','manager'].includes(userRole);
   console.log('[userRole] IS_PUBLIC:', IS_PUBLIC, 'userRole:', userRole, 'isStaff:', isStaff);
 
   // ===== カゴ =====
