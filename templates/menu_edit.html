@@ -53,6 +53,12 @@
 
         <label style="margin-top:12px">表示順</label>
         <input name="表示順" type="number" value="{{ m['表示順'] or 0 }}">
+
+        <label style="margin-top:16px; display:flex; align-items:center; gap:8px; cursor:pointer">
+          <input name="時価商品" type="checkbox" value="1" {% if m.get('時価商品') %}checked{% endif %} style="width:auto">
+          <span>時価商品（価格が未定の商品）</span>
+        </label>
+        <div class="hint">チェックすると、メニューに「時価」と表示されます。</div>
       </div>
 
       <div>
