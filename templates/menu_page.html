@@ -490,6 +490,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   document.getElementById('detail-reload')?.addEventListener('click', loadCurrentDetail);
 
+  // ===== ユーザー判定 =====
+  const userRole = ds.userRole || '';
+  const isStaff = ['staff','store_staff','store_admin','tenant_admin','sysadmin','admin','manager'].includes(userRole);
+  console.log('[userRole] IS_PUBLIC:', IS_PUBLIC, 'userRole:', userRole, 'isStaff:', isStaff);
+
   // ===== カゴ =====
   const cart=[];
   function upsertCartItem(menu, qtyDelta=1){
@@ -521,9 +526,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const hasActualPrice = it.actual_price !== undefined;
       const needsPriceEdit = hasActualPrice && (it.actual_price === null || it.actual_price === 0);
       
-      // スタッフ用（tokenがない場合）のみ価格設定ボタンを表示
-      const editPriceBtn = (!IS_PUBLIC && needsPriceEdit) ? `<button class="btn" onclick="window.__editPrice(${i})" style="background:#ffc107; color:#000; margin-right:8px;">価格設定</button>` : '';
-      const editPriceBtnSet = (!IS_PUBLIC && hasActualPrice && it.actual_price > 0) ? `<button class="btn" onclick="window.__editPrice(${i})" style="background:#17a2b8; color:#fff; margin-right:8px; font-size:12px;">価格修正</button>` : '';
+      // スタッフのみ価格設定ボタンを表示（お客様は非表示）
+      const showPriceButtons = !IS_PUBLIC || isStaff;  // tokenがないか、スタッフログイン済み
+      const editPriceBtn = (showPriceButtons && needsPriceEdit) ? `<button class="btn" onclick="window.__editPrice(${i})" style="background:#ffc107; color:#000; margin-right:8px;">価格設定</button>` : '';
+      const editPriceBtnSet = (showPriceButtons && hasActualPrice && it.actual_price > 0) ? `<button class="btn" onclick="window.__editPrice(${i})" style="background:#17a2b8; color:#fff; margin-right:8px; font-size:12px;">価格修正</button>` : '';
       
       // 時価商品で価格が0円の場合は「時価」と表示
       const priceDisplay = (isMarketPrice && it.price_excl === 0 && it.price_incl === 0) 
@@ -1055,8 +1061,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   
   // お客様（公開URL）かつスタッフログインではない場合のみ店員呼び出しボタンを表示
-  const userRole = ds.userRole || '';
-  const isStaff = ['staff','store_staff','store_admin','tenant_admin','sysadmin','admin','manager'].includes(userRole);
   console.log('[callStaffBtn] IS_PUBLIC:', IS_PUBLIC, 'userRole:', userRole, 'isStaff:', isStaff);
   if (IS_PUBLIC && !isStaff && callStaffBtn) {
     console.log('[callStaffBtn] ボタンを表示します');
