@@ -131,7 +131,7 @@
     else (order.table_no if (order is defined and order) else request.args.get('table_no','')))
   ) }}"
   data-is-public="{{ 'true' if is_public else 'false' }}"
-  data-user-role="{{ session.get('role', '') }}"
+  data-user-role="{{ 'staff' if staff_mode else '' }}"
 >
   <header>
     <div class="row">
