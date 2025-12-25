@@ -7695,6 +7695,7 @@ def api_menus_by_category(category_id: int):
                 "price_excl": price_excl,
                 "price_incl": price_incl,
                 "available": int(m.available or 0),
+                "is_market_price": bool(getattr(m, "is_market_price", 0)),
             })
         return jsonify(ok=True, menus=out)
     except Exception as e:
@@ -9215,6 +9216,7 @@ def api_admin_menus_by_category(category_id: int):
                 "price_excl": price_excl,
                 "price_incl": price_incl,
                 "available": int(m.available or 0),
+                "is_market_price": bool(getattr(m, "is_market_price", 0)),
             })
         return jsonify(ok=True, menus=out)
     except Exception as e:
