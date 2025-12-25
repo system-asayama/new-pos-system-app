@@ -9561,7 +9561,7 @@ def admin_menu_edit(mid):
             m.display_order = _to_int(f.get("表示順"), 0)
             # 時価商品フラグ
             if hasattr(m, "is_market_price"):
-                m.is_market_price = bool(f.get("時価"))
+                m.is_market_price = 1 if f.get("時価") else 0
             if hasattr(m, "store_id") and sid is not None:
                 m.store_id = sid
 
@@ -9611,7 +9611,7 @@ def admin_menu_edit(mid):
                         "tax": float(eff_rate),
                         "disp": _to_int(f.get("表示順"), 0),
                         "photo": (photo_url or m.photo_url),
-                        "is_mp": bool(f.get("時価")),
+                        "is_mp": 1 if f.get("時価") else 0,
                         "ts": ts,
                         "id": mid,
                     }
