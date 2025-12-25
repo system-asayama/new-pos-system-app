@@ -2,16 +2,13 @@
 {% block content %}
 <h2>KDS（キッチン・ドリンカー）</h2>
 
-<!-- ▼ 店員呼び出し表示エリア -->
+<!-- ▼ 店員呼び出し表示エリア（リスト形式） -->
 <div id="staff-call-alert" style="display:none; background:#fef3c7; border:2px solid #f59e0b; border-radius:8px; padding:12px 16px; margin:12px 0; box-shadow:0 4px 6px rgba(0,0,0,0.1);">
-  <div style="display:flex; align-items:center; gap:12px;">
+  <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
     <span style="font-size:32px;">🔔</span>
-    <div style="flex:1;">
-      <div style="font-size:18px; font-weight:700; color:#92400e; margin-bottom:4px;">店員呼び出し</div>
-      <div id="staff-call-tables" style="font-size:16px; font-weight:600; color:#b45309;"></div>
-    </div>
-    <button type="button" id="staff-call-dismiss" style="padding:8px 16px; background:#fff; border:1px solid #d97706; border-radius:6px; cursor:pointer; font-weight:600; color:#d97706;">確認</button>
+    <div style="font-size:18px; font-weight:700; color:#92400e;">店員呼び出し</div>
   </div>
+  <div id="staff-call-list" style="display:flex; flex-direction:column; gap:8px;"></div>
 </div>
 
 <!-- ▼ カテゴリフィルタ（最初は全て未選択） -->
@@ -334,7 +331,7 @@ let activeCalls = new Set(); // 現在表示中の呼び出し
 
 function updateStaffCallDisplay() {
   const alertEl = document.getElementById('staff-call-alert');
-  const tablesEl = document.getElementById('staff-call-tables');
+  const listEl = document.getElementById('staff-call-list');
   
   console.log('[updateStaffCallDisplay] activeCalls:', activeCalls, 'size:', activeCalls.size);
   
@@ -346,22 +343,36 @@ function updateStaffCallDisplay() {
       if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
       return a.localeCompare(b);
     });
-    const displayText = 'テーブル: ' + tableList.join(', ');
-    console.log('[updateStaffCallDisplay] tableList:', tableList, 'displayText:', displayText);
-    tablesEl.textContent = displayText;
+    
+    // リストを再構築
+    listEl.innerHTML = '';
+    tableList.forEach(tableNo => {
+      const itemDiv = document.createElement('div');
+      itemDiv.style.cssText = 'display:flex; align-items:center; justify-content:space-between; background:#fff; padding:8px 12px; border-radius:6px; border:1px solid #f59e0b;';
+      
+      const tableText = document.createElement('span');
+      tableText.style.cssText = 'font-size:16px; font-weight:600; color:#92400e;';
+      tableText.textContent = `テーブル: ${tableNo}`;
+      
+      const confirmBtn = document.createElement('button');
+      confirmBtn.type = 'button';
+      confirmBtn.style.cssText = 'padding:6px 12px; background:#10b981; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:600; font-size:14px;';
+      confirmBtn.textContent = '確認';
+      confirmBtn.onclick = () => {
+        activeCalls.delete(tableNo);
+        updateStaffCallDisplay();
+      };
+      
+      itemDiv.appendChild(tableText);
+      itemDiv.appendChild(confirmBtn);
+      listEl.appendChild(itemDiv);
+    });
+    
     alertEl.style.display = 'block';
   } else {
     console.log('[updateStaffCallDisplay] No active calls');
     alertEl.style.display = 'none';
   }
-}
-
-const dismissBtn = document.getElementById('staff-call-dismiss');
-if (dismissBtn) {
-  dismissBtn.addEventListener('click', () => {
-    activeCalls.clear();
-    updateStaffCallDisplay();
-  });
 }
 
 async function checkStaffCalls(){
