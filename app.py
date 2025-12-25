@@ -6778,6 +6778,9 @@ def table_detail(table_id):
     is_qr_user = False
     sid = None
     
+    # スタッフ権限をチェック
+    is_staff = is_admin_or_staff()
+    
     if token:
         # QRトークンから店舗IDを取得
         s_temp = SessionLocal()
@@ -6785,7 +6788,8 @@ def table_detail(table_id):
             qt = s_temp.query(QrToken).filter_by(token=token).first()
             if qt and qt.store_id:
                 sid = qt.store_id
-                is_qr_user = True
+                # スタッフとしてログインしている場合はQRユーザーではない
+                is_qr_user = not is_staff
         finally:
             s_temp.close()
     
