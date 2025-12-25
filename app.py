@@ -9724,6 +9724,7 @@ def admin_menu_edit(mid):
                 "説明": m.description,
                 "税率": m.tax_rate,
                 "表示順": m.display_order,
+                "時価": getattr(m, "is_market_price", 0),
             },
             cats=cats_flat,
             selected_links=[{
