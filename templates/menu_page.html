@@ -513,7 +513,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const editPriceBtn = needsPriceEdit ? `<button class="btn" onclick="window.__editPrice(${i})" style="background:#ffc107; color:#000; margin-right:8px;">価格設定</button>` : '';
       const editPriceBtnSet = isMarketPrice && it.actual_price > 0 ? `<button class="btn" onclick="window.__editPrice(${i})" style="background:#17a2b8; color:#fff; margin-right:8px; font-size:12px;">価格修正</button>` : '';
       
-      tr.innerHTML=`<td>${it.name}${memoHtml}</td><td><input class="qty-input" type="number" min="1" step="1" value="${it.qty}" onchange="window.__chgQty(${i}, this.value)"></td><td><div>税込 ￥${priceFmt(it.price_incl)}</div><div class="muted" style="font-size:12px">税抜 ￥${priceFmt(it.price_excl)}</div></td><td>${editPriceBtn}${editPriceBtnSet}<button class="btn sub" onclick="window.__rm(${i})">削除</button></td>`;
+      // 時価商品で価格が0円の場合は「時価」と表示
+      const priceDisplay = (isMarketPrice && it.price_excl === 0 && it.price_incl === 0) 
+        ? `<div><strong style="color:#e11d48">時価</strong></div><div class="muted" style="font-size:12px">価格未確定</div>`
+        : `<div>税込 ￥${priceFmt(it.price_incl)}</div><div class="muted" style="font-size:12px">税抜 ￥${priceFmt(it.price_excl)}</div>`;
+      
+      tr.innerHTML=`<td>${it.name}${memoHtml}</td><td><input class="qty-input" type="number" min="1" step="1" value="${it.qty}" onchange="window.__chgQty(${i}, this.value)"></td><td>${priceDisplay}</td><td>${editPriceBtn}${editPriceBtnSet}<button class="btn sub" onclick="window.__rm(${i})">削除</button></td>`;
       body.appendChild(tr); 
     }); 
     updateTotals();
