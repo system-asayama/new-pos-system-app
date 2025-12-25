@@ -498,9 +498,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if(idx>=0){ cart[idx].qty += qtyDelta; if(cart[idx].qty<1) cart[idx].qty=1; }
     else { 
       const item = {menu_id:menu.id,name:menu.name,qty:qtyDelta,rate,price_excl:excl,price_incl:incl};
-      // 時価商品の場合はフラグを保存
+      // 時価商品の場合はフラグとactual_priceを保存
       if (menu.is_market_price) {
         item.is_market_price = true;
+        item.actual_price = null;  // 価格未設定
+        item.price_mode = null;
       }
       cart.push(item);
     }
@@ -518,8 +520,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const isMarketPrice = it.is_market_price || (it.price_excl === 0 && it.price_incl === 0);
       const hasActualPrice = it.actual_price !== undefined;
       const needsPriceEdit = hasActualPrice && (it.actual_price === null || it.actual_price === 0);
-      const editPriceBtn = needsPriceEdit ? `<button class="btn" onclick="window.__editPrice(${i})" style="background:#ffc107; color:#000; margin-right:8px;">価格設定</button>` : '';
-      const editPriceBtnSet = hasActualPrice && it.actual_price > 0 ? `<button class="btn" onclick="window.__editPrice(${i})" style="background:#17a2b8; color:#fff; margin-right:8px; font-size:12px;">価格修正</button>` : '';
+      
+      // スタッフ用（tokenがない場合）のみ価格設定ボタンを表示
+      const editPriceBtn = (!IS_PUBLIC && needsPriceEdit) ? `<button class="btn" onclick="window.__editPrice(${i})" style="background:#ffc107; color:#000; margin-right:8px;">価格設定</button>` : '';
+      const editPriceBtnSet = (!IS_PUBLIC && hasActualPrice && it.actual_price > 0) ? `<button class="btn" onclick="window.__editPrice(${i})" style="background:#17a2b8; color:#fff; margin-right:8px; font-size:12px;">価格修正</button>` : '';
       
       // 時価商品で価格が0円の場合は「時価」と表示
       const priceDisplay = (isMarketPrice && it.price_excl === 0 && it.price_incl === 0) 
