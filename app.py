@@ -1581,7 +1581,7 @@ class Printer(TenantScoped, Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     store_id = Column("店舗ID", Integer, ForeignKey("M_店舗.id", ondelete="CASCADE"), nullable=False)
     name = Column("名称", String, nullable=False)
-    kind = Column("種別", String, nullable=False)  # 'escpos_tcp' | 'cups' | 'windows'
+    kind = Column("種別", String, nullable=False)  # 'escpos_tcp' | 'cups' | 'windows' | 'printer_server'
     connection = Column("接続情報", String, nullable=False)
     width = Column("幅文字", Integer, default=42)
     enabled = Column("有効", Integer, nullable=False, default=1)
