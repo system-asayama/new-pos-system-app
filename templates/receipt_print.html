@@ -208,13 +208,16 @@
         {% if store.receipt_footer %}
         {{ store.receipt_footer }}
         {% else %}
-        ありがとうございました
+        ありがとうございました<br>
         またのご来店をお待ちしております
         {% endif %}
     </div>
     
-    <!-- 下部余白確保用 -->
-    <div style="height: 30mm;"></div>
+    <!-- 下部余白確保用：実際の改行で余白を作る -->
+    <div style="line-height: 1.5;">
+        <br><br><br><br><br>
+        <br><br><br><br><br>
+    </div>
     
     <div class="no-print">
         <button class="btn" onclick="window.print()">印刷</button>
