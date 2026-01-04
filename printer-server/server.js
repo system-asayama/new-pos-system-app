@@ -162,24 +162,32 @@ app.post('/print/order', async (req, res) => {
       const subtotal = price * quantity;
       totalAmount += subtotal;
       
-      text += `【${item.name}】\r\n`;
-      text += `  数量: ${quantity}\r\n`;
-      text += `  単価: ￥${price.toLocaleString()}\r\n`;
-      text += `  小計: ￥${subtotal.toLocaleString()}\r\n`;
+      text += `\r\n`;
+      text += `■ ${item.name}\r\n`;
+      text += `\r\n`;
+      text += `   数量: ${quantity}個\r\n`;
+      text += `\r\n`;
+      text += `   単価:      ￥${price.toLocaleString()}\r\n`;
+      text += `   小計:      ￥${subtotal.toLocaleString()}\r\n`;
       
       if (item.memo) {
-        text += `  メモ: ${item.memo}\r\n`;
+        text += `\r\n`;
+        text += `   [メモ] ${item.memo}\r\n`;
       }
-      text += '\r\n';
+      text += `\r\n`;
+      text += '--------------------------------\r\n';
     });
     
-    text += '--------------------------------\r\n';
+    text += `\r\n\r\n`;
+    text += `================================\r\n`;
     text += `\r\n`;
-    text += `       *** 合計金額 ***\r\n`;
+    text += `      ■■ 合計金額 ■■\r\n`;
     text += `\r\n`;
-    text += `          ￥${totalAmount.toLocaleString()}\r\n`;
     text += `\r\n`;
-    text += '--------------------------------\r\n';
+    text += `        ￥ ${totalAmount.toLocaleString()}\r\n`;
+    text += `\r\n`;
+    text += `\r\n`;
+    text += `================================\r\n`;
     text += '\r\n\r\n\r\n';
 
     // 印刷実行
