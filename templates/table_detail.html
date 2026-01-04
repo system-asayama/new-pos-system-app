@@ -582,21 +582,24 @@
   async function printOrderTicket(order_id) {
     try {
       // 注文情報を取得
-      const r = await fetch(`/admin/order/${order_id}/json`);
-      const order = await r.json();
+      const r = await fetch(`/admin/order/${order_id}/detail/json`);
+      const data = await r.json();
       
-      if (!order || !order.items) {
+      if (!data || !data.ok || !data.items) {
         alert('注文情報の取得に失敗しました');
         return;
       }
       
+      // テーブル名を取得（table_detail.htmlのコンテキストから）
+      const tableName = '{{ table.table_no if table else "不明" }}';
+      
       // 印刷データを作成
       const printData = {
-        orderNumber: order.order_number || order.id,
-        tableName: order.table_name || '不明',
-        items: order.items.map(item => ({
+        orderNumber: data.order.id,
+        tableName: tableName,
+        items: data.items.filter(item => item.status !== '取消').map(item => ({
           name: item.name,
-          quantity: item.quantity,
+          quantity: item.qty,
           memo: item.memo || ''
         })),
         timestamp: new Date().toLocaleString('ja-JP')
