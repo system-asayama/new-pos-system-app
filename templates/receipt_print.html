@@ -204,11 +204,17 @@
         </div>
     </div>
     
-    {% if store.receipt_footer %}
     <div class="receipt-footer">
+        {% if store.receipt_footer %}
         {{ store.receipt_footer }}
+        {% else %}
+        ありがとうございました
+        またのご来店をお待ちしております
+        {% endif %}
     </div>
-    {% endif %}
+    
+    <!-- 下部余白確保用 -->
+    <div style="height: 20mm;"></div>
     
     <div class="no-print">
         <button class="btn" onclick="window.print()">印刷</button>
