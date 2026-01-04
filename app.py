@@ -2271,6 +2271,23 @@ def print_cups(text, conn_str):
         except: pass
 
 
+# --- 印刷サーバー経由での印刷 ----------------------------------------------------
+def print_printer_server(text, conn_str):
+    """
+    印刷サーバー経由で印刷する。
+    conn_str: http://192.168.1.100:3001 のような印刷サーバーのURL
+    """
+    import requests
+    url = conn_str.rstrip('/') + '/print'
+    try:
+        response = requests.post(url, json={'text': text}, timeout=5)
+        response.raise_for_status()
+        logging.info(f"印刷サーバーへの送信が成功しました: {url}")
+    except Exception as e:
+        logging.error(f"印刷サーバーへの送信に失敗しました: {url}, エラー: {e}")
+        raise
+
+
 # --- Windows プリンタ（win32print）での印刷 ------------------------------------
 def print_windows(text, conn_str):
     printer = conn_str.replace('win://','')
@@ -2322,6 +2339,8 @@ def dispatch_print(printer_row: 'Printer' | None, text: str):
             print_cups(text, conn_str)
         elif kind == "windows":
             print_windows(text, conn_str)
+        elif kind == "printer_server":
+            print_printer_server(text, conn_str)
         else:
             logging.warning(f"未知のプリンタ種別です: '{kind}'. プリンタID: {printer_row.id}, 名称: {printer_row.name}")
             # ここで正しいtextを渡す
