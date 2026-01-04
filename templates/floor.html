@@ -490,6 +490,10 @@ async function completeOrder(order_id){
     const j = await r.json();
     if(!j.ok){ alert(j.error || '完了に失敗しました'); return; }
     alert('会計を完了しました。最新表示に更新します。');
+    // レシート印刷の確認
+    if(confirm('レシートを印刷しますか？')){
+      await printReceipt(order_id);
+    }
     forceReload(true);
   }catch(e){ alert('通信に失敗しました'); }
 }
@@ -617,6 +621,57 @@ async function showMarketPriceModal() {
       resolve();
     };
   });
+}
+
+/* ============ レシート印刷 ============ */
+async function printReceipt(order_id) {
+  try {
+    // 注文情報を取得
+    const r = await fetch(`/admin/order/${order_id}/json`);
+    const order = await r.json();
+    
+    if (!order || !order.items) {
+      alert('注文情報の取得に失敗しました');
+      return;
+    }
+    
+    // 印刷データを作成
+    const printData = {
+      orderNumber: order.order_number || order.id,
+      tableName: order.table_name || '不明',
+      items: order.items.map(item => ({
+        name: item.name,
+        quantity: item.quantity,
+        price: item.price_incl || item.price
+      })),
+      subtotal: order.subtotal || 0,
+      tax: order.tax || 0,
+      total: order.total || 0,
+      timestamp: new Date().toLocaleString('ja-JP')
+    };
+    
+    // 印刷サーバーにHTTPリクエストを送信
+    const printUrl = localStorage.getItem('printerServerUrl') || 'http://localhost:3001';
+    const printResponse = await fetch(`${printUrl}/print/receipt`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(printData)
+    });
+    
+    if (!printResponse.ok) {
+      throw new Error('印刷サーバーからエラーが返されました');
+    }
+    
+    const result = await printResponse.json();
+    if (result.success) {
+      alert('レシートを印刷しました');
+    } else {
+      alert('印刷に失敗しました: ' + (result.error || '不明なエラー'));
+    }
+  } catch (e) {
+    console.error('印刷エラー:', e);
+    alert('印刷に失敗しました: ' + e.message + '\n\n印刷サーバーが起動しているか確認してください。');
+  }
 }
 </script>
 {% endblock %}
