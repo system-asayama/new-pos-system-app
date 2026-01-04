@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const { exec } = require('child_process');
 const os = require('os');
+const iconv = require('iconv-lite');
 
 const app = express();
 const PORT = 3001;
@@ -32,7 +33,7 @@ function checkPrinter() {
   });
 }
 
-// テキストファイルを作成して印刷（Windows）
+// テキストファイルを作成して印刷（Windows、Shift-JIS）
 function printText(text) {
   return new Promise((resolve, reject) => {
     if (os.platform() !== 'win32') {
@@ -44,11 +45,14 @@ function printText(text) {
     const path = require('path');
     const tempFile = path.join(os.tmpdir(), `print_${Date.now()}.txt`);
     
-    // テキストファイルを作成
-    fs.writeFileSync(tempFile, text, 'utf8');
+    // Shift-JIS（CP932）でテキストファイルを作成
+    const shiftJisBuffer = iconv.encode(text, 'shift_jis');
+    fs.writeFileSync(tempFile, shiftJisBuffer);
     
-    // PowerShellで印刷（UTF-8エンコーディングを指定）
-    const command = `powershell -Command "Get-Content '${tempFile}' -Encoding UTF8 | Out-Printer -Name '${PRINTER_NAME}'"`;
+    // PowerShellで印刷（デフォルトエンコーディングで読み込み）
+    const escapedFile = tempFile.replace(/\\/g, '\\\\');
+    const escapedPrinter = PRINTER_NAME.replace(/'/g, "''");
+    const command = `powershell -Command "Get-Content '${escapedFile}' -Encoding Default | Out-Printer -Name '${escapedPrinter}'"`;
     
     exec(command, (error, stdout, stderr) => {
       // 一時ファイルを削除
@@ -59,6 +63,8 @@ function printText(text) {
       }
       
       if (error) {
+        console.error('印刷エラー:', error);
+        console.error('stderr:', stderr);
         reject(error);
         return;
       }
