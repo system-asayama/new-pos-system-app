@@ -600,6 +600,7 @@
         items: data.items.filter(item => item.status !== '取消').map(item => ({
           name: item.name,
           quantity: item.qty,
+          price: item.unit_incl || 0,
           memo: item.memo || ''
         })),
         timestamp: new Date().toLocaleString('ja-JP')

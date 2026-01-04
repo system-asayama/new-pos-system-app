@@ -155,9 +155,17 @@ app.post('/print/order', async (req, res) => {
     text += '--------------------------------\r\n\r\n';
     
     // 商品リスト
+    let totalAmount = 0;
     items.forEach(item => {
+      const price = item.price || 0;
+      const quantity = item.quantity || 1;
+      const subtotal = price * quantity;
+      totalAmount += subtotal;
+      
       text += `【${item.name}】\r\n`;
-      text += `  数量: ${item.quantity}\r\n`;
+      text += `  数量: ${quantity}\r\n`;
+      text += `  単価: ￥${price.toLocaleString()}\r\n`;
+      text += `  小計: ￥${subtotal.toLocaleString()}\r\n`;
       
       if (item.memo) {
         text += `  メモ: ${item.memo}\r\n`;
@@ -165,6 +173,12 @@ app.post('/print/order', async (req, res) => {
       text += '\r\n';
     });
     
+    text += '--------------------------------\r\n';
+    text += `\r\n`;
+    text += `       *** 合計金額 ***\r\n`;
+    text += `\r\n`;
+    text += `          ￥${totalAmount.toLocaleString()}\r\n`;
+    text += `\r\n`;
     text += '--------------------------------\r\n';
     text += '\r\n\r\n\r\n';
 
