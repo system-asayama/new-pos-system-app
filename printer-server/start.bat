@@ -1,13 +1,15 @@
 @echo off
+chcp 65001 >nul
 echo ========================================
-echo GON POS System - 印刷サーバー
+echo   GON POS System - 印刷サーバー
 echo ========================================
 echo.
-echo プリンターがUSB接続されているか確認してください。
+echo プリンター: EPSON TM-T90 ReceiptJ4
+echo ポート: 3001
 echo.
-pause
+echo サーバーを停止するには Ctrl+C を押してください。
 echo.
-echo 印刷サーバーを起動しています...
+echo ========================================
 echo.
-node server.js
-pause
+
+call npm start
