@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
-const printer = require('printer');
+const { exec } = require('child_process');
+const os = require('os');
 
 const app = express();
 const PORT = 3001;
@@ -12,40 +13,65 @@ const PRINTER_NAME = process.env.PRINTER_NAME || 'EPSON TM-T90 ReceiptJ4';
 app.use(cors());
 app.use(express.json());
 
-// プリンター接続確認
+// プリンター接続確認（Windows）
 function checkPrinter() {
-  try {
-    const printers = printer.getPrinters();
-    const targetPrinter = printers.find(p => p.name === PRINTER_NAME);
-    return targetPrinter ? true : false;
-  } catch (error) {
-    console.error('プリンター確認エラー:', error.message);
-    return false;
-  }
+  return new Promise((resolve) => {
+    if (os.platform() !== 'win32') {
+      resolve(false);
+      return;
+    }
+    
+    exec('powershell -Command "Get-Printer | Select-Object -ExpandProperty Name"', (error, stdout) => {
+      if (error) {
+        resolve(false);
+        return;
+      }
+      const printers = stdout.split('\n').map(p => p.trim()).filter(p => p);
+      resolve(printers.includes(PRINTER_NAME));
+    });
+  });
 }
 
-// ESC/POSコマンドを生成
-function createESCPOSCommand(text) {
-  const ESC = '\x1B';
-  const GS = '\x1D';
-  
-  let command = '';
-  
-  // 初期化
-  command += ESC + '@';
-  
-  // テキスト追加
-  command += text;
-  
-  // カット
-  command += GS + 'V' + '\x41' + '\x03';
-  
-  return Buffer.from(command, 'binary');
+// テキストファイルを作成して印刷（Windows）
+function printText(text) {
+  return new Promise((resolve, reject) => {
+    if (os.platform() !== 'win32') {
+      reject(new Error('Windowsのみサポートしています'));
+      return;
+    }
+    
+    const fs = require('fs');
+    const path = require('path');
+    const tempFile = path.join(os.tmpdir(), `print_${Date.now()}.txt`);
+    
+    // テキストファイルを作成
+    fs.writeFileSync(tempFile, text, 'utf8');
+    
+    // PowerShellで印刷
+    const command = `powershell -Command "Get-Content '${tempFile}' | Out-Printer -Name '${PRINTER_NAME}'"`;
+    
+    exec(command, (error, stdout, stderr) => {
+      // 一時ファイルを削除
+      try {
+        fs.unlinkSync(tempFile);
+      } catch (e) {
+        console.error('一時ファイル削除エラー:', e);
+      }
+      
+      if (error) {
+        reject(error);
+        return;
+      }
+      
+      resolve();
+    });
+  });
 }
 
 // ヘルスチェック
-app.get('/health', (req, res) => {
-  if (checkPrinter()) {
+app.get('/health', async (req, res) => {
+  const isConnected = await checkPrinter();
+  if (isConnected) {
     res.json({ status: 'ok', message: 'プリンターが接続されています' });
   } else {
     res.status(500).json({ status: 'error', message: 'プリンターが見つかりません' });
@@ -56,7 +82,8 @@ app.get('/health', (req, res) => {
 app.post('/print/receipt', async (req, res) => {
   const { orderNumber, tableName, items, subtotal, tax, total, timestamp } = req.body;
 
-  if (!checkPrinter()) {
+  const isConnected = await checkPrinter();
+  if (!isConnected) {
     return res.status(500).json({ error: 'プリンターが見つかりません' });
   }
 
@@ -64,47 +91,36 @@ app.post('/print/receipt', async (req, res) => {
     let text = '';
     
     // ヘッダー
-    text += '        GON POS System\n';
-    text += '       お会計レシート\n';
-    text += '--------------------------------\n';
-    text += `注文番号: ${orderNumber}\n`;
-    text += `テーブル: ${tableName}\n`;
-    text += `日時: ${timestamp}\n`;
-    text += '--------------------------------\n';
-    text += '商品明細\n';
-    text += '--------------------------------\n';
+    text += '        GON POS System\r\n';
+    text += '       お会計レシート\r\n';
+    text += '--------------------------------\r\n';
+    text += `注文番号: ${orderNumber}\r\n`;
+    text += `テーブル: ${tableName}\r\n`;
+    text += `日時: ${timestamp}\r\n`;
+    text += '--------------------------------\r\n';
+    text += '商品明細\r\n';
+    text += '--------------------------------\r\n';
     
     // 商品リスト
     items.forEach(item => {
       const name = item.name.padEnd(20, ' ');
       const qty = `x${item.quantity}`.padStart(4, ' ');
       const price = `¥${item.price.toLocaleString()}`.padStart(8, ' ');
-      text += `${name}${qty}${price}\n`;
+      text += `${name}${qty}${price}\r\n`;
     });
     
     // フッター
-    text += '--------------------------------\n';
-    text += `              小計: ¥${subtotal.toLocaleString()}\n`;
-    text += `            消費税: ¥${tax.toLocaleString()}\n`;
-    text += `              合計: ¥${total.toLocaleString()}\n`;
-    text += '--------------------------------\n';
-    text += '      ありがとうございました\n';
-    text += '\n\n\n';
+    text += '--------------------------------\r\n';
+    text += `              小計: ¥${subtotal.toLocaleString()}\r\n`;
+    text += `            消費税: ¥${tax.toLocaleString()}\r\n`;
+    text += `              合計: ¥${total.toLocaleString()}\r\n`;
+    text += '--------------------------------\r\n';
+    text += '      ありがとうございました\r\n';
+    text += '\r\n\r\n\r\n';
 
     // 印刷実行
-    printer.printDirect({
-      data: text,
-      printer: PRINTER_NAME,
-      type: 'RAW',
-      success: function(jobID) {
-        console.log(`印刷ジョブ送信成功: ${jobID}`);
-        res.json({ success: true, message: 'レシートを印刷しました' });
-      },
-      error: function(err) {
-        console.error('印刷エラー:', err);
-        res.status(500).json({ error: '印刷に失敗しました', details: err });
-      }
-    });
+    await printText(text);
+    res.json({ success: true, message: 'レシートを印刷しました' });
   } catch (error) {
     console.error('印刷エラー:', error);
     res.status(500).json({ error: '印刷に失敗しました', details: error.message });
@@ -115,7 +131,8 @@ app.post('/print/receipt', async (req, res) => {
 app.post('/print/order', async (req, res) => {
   const { orderNumber, tableName, items, timestamp } = req.body;
 
-  if (!checkPrinter()) {
+  const isConnected = await checkPrinter();
+  if (!isConnected) {
     return res.status(500).json({ error: 'プリンターが見つかりません' });
   }
 
@@ -123,42 +140,31 @@ app.post('/print/order', async (req, res) => {
     let text = '';
     
     // ヘッダー（大きめ）
-    text += '\n';
-    text += '        *** 注文伝票 ***\n';
-    text += '--------------------------------\n';
-    text += `注文番号: ${orderNumber}\n`;
-    text += `テーブル: ${tableName}\n`;
-    text += `時刻: ${timestamp}\n`;
-    text += '--------------------------------\n\n';
+    text += '\r\n';
+    text += '        *** 注文伝票 ***\r\n';
+    text += '--------------------------------\r\n';
+    text += `注文番号: ${orderNumber}\r\n`;
+    text += `テーブル: ${tableName}\r\n`;
+    text += `時刻: ${timestamp}\r\n`;
+    text += '--------------------------------\r\n\r\n';
     
     // 商品リスト
     items.forEach(item => {
-      text += `【${item.name}】\n`;
-      text += `  数量: ${item.quantity}\n`;
+      text += `【${item.name}】\r\n`;
+      text += `  数量: ${item.quantity}\r\n`;
       
       if (item.memo) {
-        text += `  メモ: ${item.memo}\n`;
+        text += `  メモ: ${item.memo}\r\n`;
       }
-      text += '\n';
+      text += '\r\n';
     });
     
-    text += '--------------------------------\n';
-    text += '\n\n\n';
+    text += '--------------------------------\r\n';
+    text += '\r\n\r\n\r\n';
 
     // 印刷実行
-    printer.printDirect({
-      data: text,
-      printer: PRINTER_NAME,
-      type: 'RAW',
-      success: function(jobID) {
-        console.log(`印刷ジョブ送信成功: ${jobID}`);
-        res.json({ success: true, message: '注文伝票を印刷しました' });
-      },
-      error: function(err) {
-        console.error('印刷エラー:', err);
-        res.status(500).json({ error: '印刷に失敗しました', details: err });
-      }
-    });
+    await printText(text);
+    res.json({ success: true, message: '注文伝票を印刷しました' });
   } catch (error) {
     console.error('印刷エラー:', error);
     res.status(500).json({ error: '印刷に失敗しました', details: error.message });
@@ -166,22 +172,28 @@ app.post('/print/order', async (req, res) => {
 });
 
 // サーバー起動
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`印刷サーバーがポート ${PORT} で起動しました`);
   console.log(`ヘルスチェック: http://localhost:${PORT}/health`);
   console.log(`プリンター名: ${PRINTER_NAME}`);
+  console.log(`プラットフォーム: ${os.platform()}`);
   
   // プリンター接続確認
-  if (checkPrinter()) {
+  const isConnected = await checkPrinter();
+  if (isConnected) {
     console.log('✓ プリンターが接続されています');
   } else {
     console.log('✗ プリンターが見つかりません。プリンター名を確認してください。');
-    console.log('利用可能なプリンター:');
-    try {
-      const printers = printer.getPrinters();
-      printers.forEach(p => console.log(`  - ${p.name}`));
-    } catch (error) {
-      console.error('プリンター一覧取得エラー:', error.message);
+    
+    // 利用可能なプリンター一覧を表示
+    if (os.platform() === 'win32') {
+      exec('powershell -Command "Get-Printer | Select-Object -ExpandProperty Name"', (error, stdout) => {
+        if (!error) {
+          console.log('利用可能なプリンター:');
+          const printers = stdout.split('\n').map(p => p.trim()).filter(p => p);
+          printers.forEach(p => console.log(`  - ${p}`));
+        }
+      });
     }
   }
 });
