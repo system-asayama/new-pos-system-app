@@ -28,11 +28,6 @@
             padding: 10mm;
         }
         
-        .receipt-container {
-            border: 2px solid #000;
-            padding: 8mm;
-        }
-        
         .receipt-header {
             text-align: center;
             border-bottom: 1px dashed #000;
@@ -144,7 +139,6 @@
     </style>
 </head>
 <body>
-    <div class="receipt-container">
     <div class="receipt-header">
         <h1>{{ store.name }}</h1>
         {% if store.address %}
@@ -223,7 +217,6 @@
     <div style="line-height: 2.0; font-size: 12px; color: white;">
         &nbsp;<br>&nbsp;<br>&nbsp;<br>&nbsp;<br>&nbsp;<br>
         &nbsp;<br>&nbsp;<br>&nbsp;<br>&nbsp;<br>&nbsp;<br>
-    </div>
     </div>
     
     <div class="no-print">
