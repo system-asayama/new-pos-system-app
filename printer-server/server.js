@@ -47,8 +47,8 @@ function printText(text) {
     // テキストファイルを作成
     fs.writeFileSync(tempFile, text, 'utf8');
     
-    // PowerShellで印刷
-    const command = `powershell -Command "Get-Content '${tempFile}' | Out-Printer -Name '${PRINTER_NAME}'"`;
+    // PowerShellで印刷（UTF-8エンコーディングを指定）
+    const command = `powershell -Command "Get-Content '${tempFile}' -Encoding UTF8 | Out-Printer -Name '${PRINTER_NAME}'"`;
     
     exec(command, (error, stdout, stderr) => {
       // 一時ファイルを削除
