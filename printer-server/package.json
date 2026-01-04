@@ -1,7 +1,7 @@
 {
   "name": "gon-pos-printer-server",
-  "version": "1.0.0",
-  "description": "Local printer server for GON POS System with EPSON TM-T90II",
+  "version": "2.0.0",
+  "description": "Local printer server for GON POS System with EPSON TM-T90II (Windows named printer support)",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -17,7 +17,6 @@
   "dependencies": {
     "express": "^4.18.2",
     "cors": "^2.8.5",
-    "escpos": "^3.0.0-alpha.6",
-    "escpos-usb": "^3.0.0-alpha.4"
+    "printer": "^0.4.0"
   }
 }
