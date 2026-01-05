@@ -2339,9 +2339,9 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
     lines.append("")
     
     # 商品ヘッダー（レシートと同じフォーマット）
-    # 商品名(26文字) + 数量(4文字右寄せ) + スペース + 金額(11文字右寄せ)
+    # 商品名(22文字) + 数量(4文字右寄せ) + スペース + 金額(15文字右寄せ)
     # 手動調整: 全角文字の幅を考慮して固定文字列を使用
-    lines.append(pad("商品名                      数量      金額"))
+    lines.append(pad("商品名                  数量          金額"))
     lines.append(hr)
     
     # 今回送信した商品のみを表示（OrderItem IDでフィルタリング）
@@ -2360,11 +2360,11 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
         amount = price * qty
         subtotal += amount
         
-        # レシートと同じフォーマット: 商品名(26文字) 数量(4桁) 金額(右寄せ)
+        # レシートと同じフォーマット: 商品名(22文字) 数量(4桁) 金額(15文字右寄せ)
         # 全角文字の表示幅を考慮して整形
-        name_display = pad_to_width(menu_name, 26, 'left')
+        name_display = pad_to_width(menu_name, 22, 'left')
         qty_display = str(qty).rjust(4)
-        amount_display = f"￥{amount:,}".rjust(11)
+        amount_display = f"￥{amount:,}".rjust(15)
         
         lines.append(pad(f"{name_display}{qty_display} {amount_display}"))
     
@@ -2372,13 +2372,13 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
     lines.append("")
     
     # 小計と合計
-    # データ行と同じ金額位置（31文字 + 11文字右寄せ = 42文字）
-    lines.append(pad(f"小計".ljust(31) + f"￥{subtotal:,}".rjust(11)))
+    # データ行と同じ金額位置（27文字 + 15文字右寄せ = 42文字）
+    lines.append(pad(f"小計".ljust(27) + f"￥{subtotal:,}".rjust(15)))
     
     # 消費税は表示しない（必要に応じて追加）
     
     lines.append("")
-    lines.append(pad(f"合計".ljust(31) + f"￥{subtotal:,}".rjust(11)))
+    lines.append(pad(f"合計".ljust(27) + f"￥{subtotal:,}".rjust(15)))
     lines.append(hr)
     
     return "\n".join(lines) + "\n"
