@@ -490,6 +490,13 @@ async function submitOrder(){
     if (!res.ok || !j.ok){ alert('送信に失敗しました: ' + (j.error || res.status)); return; }
     alert('送信しました（注文番号: ' + j.order_id + '）');
     orderId = j.order_id; cart.splice(0); renderCart(); loadOrderDetails();
+    
+    // 印刷処理をブラウザから実行
+    if(j.order_id && j.new_item_ids){
+      triggerPrint(j.order_id, j.new_item_ids).catch(err => {
+        console.error('印刷エラー:', err);
+      });
+    }
   }catch(e){ alert('通信エラー: ' + e); }
 }
 
@@ -612,6 +619,58 @@ function saveMarketPrice() {
   ensureNotEmptyRow();
   renderCart();
   closeMarketPriceModal();
+}
+
+/* ========================= 印刷処理 ========================= */
+async function triggerPrint(orderId, newItemIds) {
+  try {
+    // プリンター設定を取得
+    const printerRes = await fetch('/api/printer_config');
+    if (!printerRes.ok) {
+      console.warn('プリンター設定が取得できませんでした');
+      return;
+    }
+    const printerConfig = await printerRes.json();
+    if (!printerConfig || !printerConfig.printer_server_url) {
+      console.warn('印刷サーバーURLが設定されていません');
+      return;
+    }
+    
+    // 印刷データを取得（サーバーから返されたOrderItem IDを使用）
+    const itemIdsStr = Array.isArray(newItemIds) ? newItemIds.join(',') : String(newItemIds);
+    console.log('[DEBUG] triggerPrint - newItemIds:', newItemIds);
+    console.log('[DEBUG] triggerPrint - itemIdsStr:', itemIdsStr);
+    const printDataUrl = `/api/print_data/${orderId}?new_items=${itemIdsStr}`;
+    console.log('[DEBUG] triggerPrint - printDataUrl:', printDataUrl);
+    const printDataRes = await fetch(printDataUrl);
+    if (!printDataRes.ok) {
+      console.error('印刷データの取得に失敗しました');
+      return;
+    }
+    const printData = await printDataRes.json();
+    if (!printData) {
+      console.error('印刷データが空です');
+      return;
+    }
+    
+    // 印刷サーバーに送信
+    const printUrl = printerConfig.printer_server_url.replace(/\/$/, '') + '/print';
+    const printRes = await fetch(printUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: printData.text })
+    });
+    
+    if (printRes.ok) {
+      const result = await printRes.json();
+      console.log('印刷成功:', result.message);
+    } else {
+      const error = await printRes.json().catch(() => ({}));
+      console.error('印刷リクエストが失敗しました:', printRes.status, error);
+    }
+  } catch (err) {
+    console.error('印刷処理中にエラーが発生しました:', err);
+  }
 }
 
 /* ========================= 起動時 ========================= */

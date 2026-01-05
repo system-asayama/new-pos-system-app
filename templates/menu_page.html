@@ -999,8 +999,8 @@ document.addEventListener('DOMContentLoaded', () => {
       cart.splice(0); renderCart(); loadCurrentDetail();
       
       // 印刷処理をブラウザから実行
-      if(data.order_id){
-        triggerPrint(data.order_id, items).catch(err => {
+      if(data.order_id && data.new_item_ids){
+        triggerPrint(data.order_id, data.new_item_ids).catch(err => {
           console.error('印刷エラー:', err);
         });
       }
@@ -1020,7 +1020,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('submit-btn')?.addEventListener('click', submitOrder);
 
   // ===== 印刷処理 =====
-  async function triggerPrint(orderId, items) {
+  async function triggerPrint(orderId, newItemIds) {
     try {
       // プリンター設定を取得
       const printerRes = await fetch('/api/printer_config');
@@ -1034,11 +1034,11 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       
-      // 印刷データを取得（今回送信した商品IDを渡す）
-      const newItemIds = items.map(it => it.menu_id).join(',');
-      console.log('[DEBUG] triggerPrint - items:', items);
+      // 印刷データを取得（サーバーから返されたOrderItem IDを使用）
+      const itemIdsStr = Array.isArray(newItemIds) ? newItemIds.join(',') : String(newItemIds);
       console.log('[DEBUG] triggerPrint - newItemIds:', newItemIds);
-      const printDataUrl = `/api/print_data/${orderId}?new_items=${newItemIds}`;
+      console.log('[DEBUG] triggerPrint - itemIdsStr:', itemIdsStr);
+      const printDataUrl = `/api/print_data/${orderId}?new_items=${itemIdsStr}`;
       console.log('[DEBUG] triggerPrint - printDataUrl:', printDataUrl);
       const printDataRes = await fetch(printDataUrl);
       if (!printDataRes.ok) {

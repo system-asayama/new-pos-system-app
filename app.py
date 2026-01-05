@@ -2256,7 +2256,7 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
         header: OrderHeader オブジェクト
         items: OrderItem のリスト（すべての注文明細）
         table: TableSeat オブジェクト
-        new_item_ids: 今回送信した商品のmenu_idのリスト
+        new_item_ids: 今回送信した商品のOrderItem IDのリスト
     
     Returns:
         印刷用テキスト
@@ -2291,11 +2291,8 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
     lines.append(pad("商品名                  数量    金額"))
     lines.append(hr)
     
-    # 今回送信した商品のみを表示（new_item_idsが空の場合はすべて表示）
-    if new_item_ids:
-        new_items = [item for item in items if getattr(item, 'menu_id', None) in new_item_ids]
-    else:
-        new_items = items
+    # 今回送信した商品のみを表示（OrderItem IDでフィルタリング）
+    new_items = [item for item in items if getattr(item, 'id', None) in new_item_ids]
     
     subtotal = 0
     for item in new_items:
@@ -12850,7 +12847,8 @@ def api_order():
             "order_id": order.id,
             "subtotal": order.subtotal,
             "tax": order.tax,
-            "total": order.total
+            "total": order.total,
+            "new_item_ids": [item.id for item in new_items_for_print]
         })
     except Exception as e:
         s.rollback()
@@ -14190,7 +14188,8 @@ def staff_api_order():
             "order_id": order.id,
             "subtotal": order.subtotal,
             "tax": order.tax,
-            "total": order.total
+            "total": order.total,
+            "new_item_ids": [item.id for item in new_items_for_print]
         })
     except Exception as e:
         s.rollback()
