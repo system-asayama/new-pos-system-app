@@ -84,6 +84,34 @@ app.get('/health', async (req, res) => {
   }
 });
 
+// サーバー情報（自動検出用）
+app.get('/info', async (req, res) => {
+  const isConnected = await checkPrinter();
+  const networkInterfaces = os.networkInterfaces();
+  const ipAddresses = [];
+  
+  // ローカルIPアドレスを取得
+  for (const name of Object.keys(networkInterfaces)) {
+    for (const net of networkInterfaces[name]) {
+      // IPv4かつ内部アドレスでないもの
+      if (net.family === 'IPv4' && !net.internal) {
+        ipAddresses.push(net.address);
+      }
+    }
+  }
+  
+  res.json({
+    type: 'printer_server',
+    name: 'Node.js Print Server',
+    version: '1.0.0',
+    platform: os.platform(),
+    printer_name: PRINTER_NAME,
+    printer_connected: isConnected,
+    ip_addresses: ipAddresses,
+    port: PORT
+  });
+});
+
 // レシート印刷
 app.post('/print/receipt', async (req, res) => {
   const { orderNumber, tableName, items, subtotal, tax, total, timestamp } = req.body;

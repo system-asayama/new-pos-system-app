@@ -11096,6 +11096,33 @@ def _scan_hosts_quick(hosts: list[str], ports: list[int] | None = None, per_host
                 kind = "cups"
                 conn = f"ipp://{ip}:{p}"
                 name = f"IPP {ip}"
+            elif p == 3001:
+                # printer_serverの可能性を確認
+                try:
+                    import requests
+                    resp = requests.get(f"http://{ip}:{p}/info", timeout=2)
+                    if resp.status_code == 200:
+                        info = resp.json()
+                        if info.get('type') == 'printer_server':
+                            kind = "printer_server"
+                            conn = f"http://{ip}:{p}"
+                            printer_name = info.get('printer_name', 'Unknown')
+                            name = f"Print Server ({printer_name})"
+                            results.append({
+                                "name": name,
+                                "kind": kind,
+                                "connection": conn,
+                                "ip": ip,
+                                "port": p,
+                                "width": 42,
+                                "source": "scan",
+                                "printer_connected": info.get('printer_connected', False),
+                            })
+                            continue
+                except Exception:
+                    pass
+                # printer_serverでない場合はスキップ
+                continue
             else:
                 kind = "escpos_tcp"
                 conn = f"tcp://{ip}:{p}"
@@ -11280,7 +11307,7 @@ def admin_printers_discover():
     """
     mode = (request.args.get("mode") or "auto").lower()
     cidr = request.args.get("cidr")
-    ports_param = request.args.get("ports", "9100")   # ← 既定を 9100 のみに
+    ports_param = request.args.get("ports", "9100,631,3001")   # ← 既定を 9100 のみに
     ports = []
     for x in (ports_param or "").split(","):
         try:
