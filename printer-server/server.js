@@ -33,7 +33,7 @@ function checkPrinter() {
   });
 }
 
-// テキストファイルを作成して印刷（Windows、Shift-JIS）
+// テキストファイルを作成して印刷（Windows、Shift-JIS、Raw印刷）
 function printText(text) {
   return new Promise((resolve, reject) => {
     if (os.platform() !== 'win32') {
@@ -49,10 +49,10 @@ function printText(text) {
     const shiftJisBuffer = iconv.encode(text, 'shift_jis');
     fs.writeFileSync(tempFile, shiftJisBuffer);
     
-    // PowerShellで印刷（デフォルトエンコーディングで読み込み）
-    const escapedFile = tempFile.replace(/\\/g, '\\\\');
-    const escapedPrinter = PRINTER_NAME.replace(/'/g, "''");
-    const command = `powershell -Command "Get-Content '${escapedFile}' -Raw -Encoding Default | Out-Printer -Name '${escapedPrinter}'"`;
+    // copyコマンドでRaw印刷（バイナリモード）
+    const escapedFile = tempFile.replace(/\\/g, '/');
+    const escapedPrinter = PRINTER_NAME;
+    const command = `cmd /c "copy /b "${escapedFile}" "\\\\localhost\\${escapedPrinter}""`;
     
     exec(command, (error, stdout, stderr) => {
       // 一時ファイルを削除
