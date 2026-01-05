@@ -2263,7 +2263,8 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
     """
     lines = []
     width = 43  # 42から43に変更（商品行の金額16文字対応）
-    pad = lambda s: (s[:width]).ljust(width)
+    left_margin = "  "  # 左端に半角スペース2つの余白
+    pad = lambda s: left_margin + (s[:width]).ljust(width)
     hr = "-" * 48  # 点線は48文字（全角文字対応）
     
     # 全角文字の表示幅を考慮した整形関数
