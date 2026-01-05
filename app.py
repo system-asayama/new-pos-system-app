@@ -7214,8 +7214,8 @@ def table_detail(table_id):
                     menu_is_market_price = bool(getattr(menu_obj, "is_market_price", 0))
             except Exception:
                 pass
-            # 時価商品の判定：menu.is_market_price=True または original_unit_price=0
-            is_market_price = menu_is_market_price or (original_unit_price == 0)
+            # 時価商品の判定：menu.is_market_priceのみ
+            is_market_price = menu_is_market_price
             
             result = {
                 "id": item_id,
@@ -8878,9 +8878,8 @@ def set_market_price(item_id):
         menu = getattr(item, "menu", None)
         is_market_price = getattr(menu, "is_market_price", 0) if menu else 0
         
-        # 価格が0円の商品も時価商品として扱う
-        current_price = getattr(item, "unit_price", 0) or 0
-        if not is_market_price and current_price != 0:
+        # 時価フラグが設定されている場合のみ時価商品として扱う
+        if not is_market_price:
             return jsonify({"ok": False, "error": "not a market price item"}), 400
         
         # 税率を取得
