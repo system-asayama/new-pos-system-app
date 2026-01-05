@@ -2301,7 +2301,7 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
     # 既注文の合計金額を計算
     existing_total = 0
     for item in existing_items:
-        price = getattr(item, 'unit_excl', 0) or 0
+        price = getattr(item, 'unit_price', 0) or 0
         qty = getattr(item, 'qty', 1) or 1
         existing_total += price * qty
     
@@ -2322,18 +2322,16 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
         for item in new_items:
             menu_name = getattr(getattr(item, 'menu', None), 'name', f"不明 (ID:{getattr(item, 'menu_id', 'N/A')})")
             qty = getattr(item, 'qty', 1) or 1
-            price = getattr(item, 'unit_excl', 0) or 0
+            price = getattr(item, 'unit_price', 0) or 0
             subtotal = price * qty
             new_total += subtotal
             memo = getattr(item, 'memo', '')
             
-            lines.append(pad(f"■ {menu_name}"))
-            lines.append(pad(f"   数量: {qty}個"))
-            lines.append(pad(f"   単価:      ￥{price:,}"))
-            lines.append(pad(f"   金額:      ￥{subtotal:,}"))
+            # 1行で表示: メニュー x数量 @単価 = 金額
+            lines.append(pad(f"■ {menu_name} x{qty} @￥{price:,} = ￥{subtotal:,}"))
             
             if memo:
-                lines.append(pad(f"   [メモ] {memo}"))
+                lines.append(pad(f"  [メモ] {memo}"))
             
             lines.append("")
     else:
