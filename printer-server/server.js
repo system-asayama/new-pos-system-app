@@ -65,7 +65,7 @@ function printText(text) {
     const textBuffer = iconv.encode(text, 'shift_jis');
     
     // 紙送りとカットコマンド
-    const feedCmd = Buffer.from([0x0A, 0x0A, 0x0A, 0x0A, 0x0A]); // 5行紙送り
+    const feedCmd = Buffer.from([0x0A, 0x0A, 0x0A, 0x0A, 0x0A, 0x0A, 0x0A, 0x0A]); // 8行紙送り
     const cutCmd = Buffer.from([GS, 0x56, 0x00]); // GS V 0 - フルカット
     
     // 全てを結合
