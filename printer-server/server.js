@@ -167,6 +167,10 @@ app.post('/print', async (req, res) => {
   console.log('[DEBUG] /print リクエスト受信');
   console.log('[DEBUG] type:', type);
   console.log('[DEBUG] text:', text ? 'あり' : 'なし');
+  if (text) {
+    console.log('[DEBUG] textの内容（最初の500文字）:');
+    console.log(text.substring(0, 500));
+  }
   console.log('[DEBUG] data:', JSON.stringify(data, null, 2));
 
   // textフィールドがある場合は直接印刷
