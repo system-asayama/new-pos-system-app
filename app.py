@@ -2372,18 +2372,30 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
     lines.append(hr)
     lines.append("")
     
-    # 小計と合計
-    # 商品行と金額位置を揃える（27文字幅 + 16文字右寄せ = 43文字）
-    # pad_to_widthを使用して全角文字の幅を正確に計算
+    # 小計（今回の注文のみ）
     subtotal_label = pad_to_width("小計", 27, 'left')
     subtotal_amount = f"￥{subtotal:,}".rjust(16)
     lines.append(pad(f"{subtotal_label}{subtotal_amount}"))
     
-    # 消費税は表示しない（必要に応じて追加）
+    # 既注文合計（今回の注文以外の合計）
+    previous_total = 0
+    for item in items:
+        if getattr(item, 'id', None) not in new_item_ids:
+            qty = getattr(item, 'qty', 1) or 1
+            price = getattr(item, 'unit_price', 0) or 0
+            previous_total += price * qty
+    
+    lines.append("")
+    previous_label = pad_to_width("既注文合計", 27, 'left')
+    previous_amount = f"￥{previous_total:,}".rjust(16)
+    lines.append(pad(f"{previous_label}{previous_amount}"))
+    
+    # 合計（小計 + 既注文合計）
+    grand_total = subtotal + previous_total
     
     lines.append("")
     total_label = pad_to_width("合計", 27, 'left')
-    total_amount = f"￥{subtotal:,}".rjust(16)
+    total_amount = f"￥{grand_total:,}".rjust(16)
     lines.append(pad(f"{total_label}{total_amount}"))
     lines.append(hr)
     
