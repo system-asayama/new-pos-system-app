@@ -2287,8 +2287,8 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
     lines.append(pad(f"注文番号: #{header_id}"))
     lines.append("")
     
-    # 商品ヘッダー
-    lines.append(pad("商品名                    数量  金額"))
+    # 商品ヘッダー（レシートと同じフォーマット）
+    lines.append(pad("商品名                  数量    金額"))
     lines.append(hr)
     
     # 今回送信した商品のみを表示
@@ -2302,12 +2302,12 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
         amount = price * qty
         subtotal += amount
         
-        # フォーマット: 商品名(24文字) 数量(4桁) 金額(10桁)
-        name_display = menu_name[:24].ljust(24)
+        # レシートと同じフォーマット: 商品名(26文字) 数量(4桁) 金額(右寄せ)
+        name_display = menu_name[:26].ljust(26)
         qty_display = str(qty).rjust(4)
-        amount_display = f"￥{amount:,}".rjust(10)
+        amount_display = f"￥{amount:,}".rjust(11)
         
-        lines.append(pad(f"{name_display} {qty_display} {amount_display}"))
+        lines.append(pad(f"{name_display}{qty_display} {amount_display}"))
     
     lines.append(hr)
     lines.append("")
