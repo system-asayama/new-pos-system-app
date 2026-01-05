@@ -2264,7 +2264,7 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
     lines = []
     width = 42
     pad = lambda s: (s[:width]).ljust(width)
-    hr = "-" * width
+    hr = "-" * 48  # 点線は48文字（全角文字対応）
     
     # ヘッダー情報
     header_id = getattr(header, 'id', 'N/A')
