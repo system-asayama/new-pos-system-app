@@ -2332,8 +2332,6 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
             
             if memo:
                 lines.append(pad(f"  [メモ] {memo}"))
-            
-            lines.append("")
     else:
         lines.append(pad("--- 新しい注文はありません ---"))
         lines.append("")
