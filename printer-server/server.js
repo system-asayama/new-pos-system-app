@@ -163,7 +163,24 @@ app.post('/print/receipt', async (req, res) => {
 
 // 汎用印刷エンドポイント（ブラウザから直接呼び出し用）
 app.post('/print', async (req, res) => {
-  const { type, data } = req.body;
+  const { type, data, text } = req.body;
+
+  // textフィールドがある場合は直接印刷
+  if (text) {
+    const isConnected = await checkPrinter();
+    if (!isConnected) {
+      return res.status(500).json({ error: 'プリンターが見つかりません' });
+    }
+
+    try {
+      await printText(text);
+      res.json({ success: true, message: '印刷が完了しました' });
+    } catch (error) {
+      console.error('印刷エラー:', error);
+      res.status(500).json({ error: '印刷に失敗しました', details: error.message });
+    }
+    return;
+  }
 
   // typeに応じて適切な印刷処理を実行
   if (type === 'order') {

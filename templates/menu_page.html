@@ -1046,15 +1046,12 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       
-      // 印刷サーバーに送信（新しい形式）
+      // 印刷サーバーに送信
       const printUrl = printerConfig.printer_server_url.replace(/\/$/, '') + '/print';
       const printRes = await fetch(printUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'order',
-          data: printData
-        })
+        body: JSON.stringify({ text: printData.text })
       });
       
       if (printRes.ok) {
