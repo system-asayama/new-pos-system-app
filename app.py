@@ -2292,7 +2292,12 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
     lines.append(hr)
     
     # 今回送信した商品のみを表示（OrderItem IDでフィルタリング）
+    app.logger.debug(f"[build_ticket] new_item_ids={new_item_ids}")
+    app.logger.debug(f"[build_ticket] all items count={len(items)}")
+    for item in items:
+        app.logger.debug(f"[build_ticket] item.id={getattr(item, 'id', None)}, menu_id={getattr(item, 'menu_id', None)}")
     new_items = [item for item in items if getattr(item, 'id', None) in new_item_ids]
+    app.logger.debug(f"[build_ticket] filtered new_items count={len(new_items)}")
     
     subtotal = 0
     for item in new_items:
