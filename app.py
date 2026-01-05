@@ -2250,7 +2250,7 @@ def build_ticket(header: 'OrderHeader', details: list['OrderItem'], table: 'Tabl
 # --- 新しい注文伝票テキストの生成（既注文と新しい注文を区別） -----
 def build_ticket_with_totals(header, items, table, new_item_ids):
     """
-    既注文と新しい注文を区別して印刷する新しいフォーマット
+    レシート形式のシンプルな印刷フォーマット
     
     Args:
         header: OrderHeader オブジェクト
@@ -2262,7 +2262,7 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
         印刷用テキスト
     """
     lines = []
-    width = 48
+    width = 42
     pad = lambda s: (s[:width]).ljust(width)
     hr = "-" * width
     
@@ -2280,90 +2280,46 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
     
     # ヘッダー
     lines.append("")
-    lines.append(pad("        *** 注文伝票 ***"))
-    lines.append(hr)
-    lines.append(pad(f"注文番号: {header_id}"))
+    lines.append(pad("ホルモンダイニングGON").center(width))
+    lines.append("")
+    lines.append(pad(f"日時: {opened_at}"))
     lines.append(pad(f"テーブル: {table_no_str}"))
-    lines.append(pad(f"時刻: {opened_at}"))
+    lines.append(pad(f"注文番号: #{header_id}"))
+    lines.append("")
+    
+    # 商品ヘッダー
+    lines.append(pad("商品名                    数量  金額"))
     lines.append(hr)
     
-    # 既注文と新しい注文を区別
-    existing_items = []
-    new_items = []
+    # 今回送信した商品のみを表示
+    new_items = [item for item in items if getattr(item, 'menu_id', None) in new_item_ids]
     
-    for item in items:
-        menu_id = getattr(item, 'menu_id', None)
-        if menu_id in new_item_ids:
-            new_items.append(item)
-        else:
-            existing_items.append(item)
-    
-    # 既注文の合計金額を計算
-    existing_total = 0
-    for item in existing_items:
-        price = getattr(item, 'unit_price', 0) or 0
+    subtotal = 0
+    for item in new_items:
+        menu_name = getattr(getattr(item, 'menu', None), 'name', f"不明 (ID:{getattr(item, 'menu_id', 'N/A')})")
         qty = getattr(item, 'qty', 1) or 1
-        existing_total += price * qty
-    
-    # 既注文の合計金額を表示（既注文がある場合のみ）
-    if existing_items:
-        lines.append("")
-        lines.append(pad("【既注文の合計金額】"))
-        lines.append(pad(f"              ￥{existing_total:,}"))
-        lines.append(hr)
-    
-    # 新しい注文を表示
-    lines.append("")
-    lines.append(pad("【新しい注文】"))
-    lines.append("")
-    
-    new_total = 0
-    if new_items:
-        for item in new_items:
-            menu_name = getattr(getattr(item, 'menu', None), 'name', f"不明 (ID:{getattr(item, 'menu_id', 'N/A')})")
-            qty = getattr(item, 'qty', 1) or 1
-            price = getattr(item, 'unit_price', 0) or 0
-            subtotal = price * qty
-            new_total += subtotal
-            memo = getattr(item, 'memo', '')
-            
-            # レシート形式: 商品名              単価  数量    金額
-            # 商品名は最大20文字、単価は8桁、数量は4桁、金額は右寄せ9桁
-            name_width = 20
-            price_width = 8
-            qty_width = 4
-            amount_width = 9
-            
-            # 各項目をフォーマット
-            display_name = menu_name[:name_width].ljust(name_width)
-            display_price = f"￥{price:,}".rjust(price_width)
-            display_qty = str(qty).rjust(qty_width)
-            display_amount = f"￥{subtotal:,}".rjust(amount_width)
-            
-            lines.append(pad(f"{display_name} {display_price} {display_qty} {display_amount}"))
-            
-            if memo:
-                lines.append(pad(f"  [メモ] {memo}"))
-    else:
-        lines.append(pad("--- 新しい注文はありません ---"))
-        lines.append("")
+        price = getattr(item, 'unit_price', 0) or 0
+        amount = price * qty
+        subtotal += amount
+        
+        # フォーマット: 商品名(24文字) 数量(4桁) 金額(10桁)
+        name_display = menu_name[:24].ljust(24)
+        qty_display = str(qty).rjust(4)
+        amount_display = f"￥{amount:,}".rjust(10)
+        
+        lines.append(pad(f"{name_display} {qty_display} {amount_display}"))
     
     lines.append(hr)
-    
-    # 新しい注文の合計金額（小計）
     lines.append("")
-    lines.append(pad("【新しい注文の合計金額（小計）】"))
-    lines.append(pad(f"              ￥{new_total:,}"))
+    
+    # 小計と合計
+    lines.append(pad(f"小計".ljust(30) + f"￥{subtotal:,}".rjust(12)))
+    
+    # 消費税は表示しない（必要に応じて追加）
+    
+    lines.append("")
+    lines.append(pad(f"合計".ljust(30) + f"￥{subtotal:,}".rjust(12)))
     lines.append(hr)
-    
-    # 既注文＋新しい注文の合計金額
-    grand_total = existing_total + new_total
-    lines.append("")
-    lines.append(pad("【既注文＋新しい注文の合計金額】"))
-    lines.append(pad(f"              ￥{grand_total:,}"))
-    lines.append("=" * width)
-    lines.append("")
-    lines.append("")
     
     return "\n".join(lines) + "\n"
 
