@@ -3,7 +3,6 @@ const cors = require('cors');
 const { exec } = require('child_process');
 const os = require('os');
 const iconv = require('iconv-lite');
-const printer = require('printer');
 
 const app = express();
 const PORT = 3001;
@@ -34,31 +33,46 @@ function checkPrinter() {
   });
 }
 
-// テキストを印刷（printerパッケージ使用）
+// テキストを印刷（copyコマンドで共有プリンターへ）
 function printText(text) {
   return new Promise((resolve, reject) => {
-    try {
-      // Shift-JIS（CP932）でエンコード
-      const shiftJisBuffer = iconv.encode(text, 'shift_jis');
-      
-      // printerパッケージで印刷
-      printer.printDirect({
-        data: shiftJisBuffer,
-        printer: PRINTER_NAME,
-        type: 'RAW',
-        success: function(jobID) {
-          console.log(`印刷ジョブ送信成功: ${jobID}`);
-          resolve();
-        },
-        error: function(err) {
-          console.error('印刷エラー:', err);
-          reject(err);
-        }
-      });
-    } catch (error) {
-      console.error('印刷エラー:', error);
-      reject(error);
+    if (os.platform() !== 'win32') {
+      reject(new Error('Windowsのみサポートしています'));
+      return;
     }
+    
+    const fs = require('fs');
+    const path = require('path');
+    const tempFile = path.join(os.tmpdir(), `print_${Date.now()}.txt`);
+    
+    // Shift-JIS（CP932）でテキストファイルを作成
+    const shiftJisBuffer = iconv.encode(text, 'shift_jis');
+    fs.writeFileSync(tempFile, shiftJisBuffer);
+    
+    // copyコマンドで共有プリンターへRaw印刷
+    const shareName = PRINTER_NAME.replace(/ /g, '_');
+    const command = `cmd /c copy /b "${tempFile}" "\\\\%COMPUTERNAME%\\${shareName}"`;
+    
+    console.log(`[DEBUG] 印刷コマンド: ${command}`);
+    
+    exec(command, (error, stdout, stderr) => {
+      // 一時ファイルを削除
+      try {
+        fs.unlinkSync(tempFile);
+      } catch (e) {
+        console.error('一時ファイル削除エラー:', e);
+      }
+      
+      if (error) {
+        console.error('印刷エラー:', error);
+        console.error('stderr:', stderr);
+        reject(error);
+        return;
+      }
+      
+      console.log('印刷成功');
+      resolve();
+    });
   });
 }
 
