@@ -45,9 +45,28 @@ function printText(text) {
     const path = require('path');
     const tempFile = path.join(os.tmpdir(), `print_${Date.now()}.txt`);
     
-    // Shift-JIS（CP932）でテキストファイルを作成
-    const shiftJisBuffer = iconv.encode(text, 'shift_jis');
-    fs.writeFileSync(tempFile, shiftJisBuffer);
+    // ESC/POSコマンドを追加
+    const ESC = 0x1B;
+    const GS = 0x1D;
+    
+    // 初期化コマンド
+    const initCmd = Buffer.from([ESC, 0x40]); // ESC @ - プリンター初期化
+    
+    // 文字コードページ設定 (Shift-JIS)
+    const charsetCmd = Buffer.from([ESC, 0x74, 0x12]); // ESC t 18 - Shift-JIS
+    
+    // テキストをShift-JISでエンコード
+    const textBuffer = iconv.encode(text, 'shift_jis');
+    
+    // 紙送りとカットコマンド
+    const feedCmd = Buffer.from([0x0A, 0x0A, 0x0A]); // 3行紙送り
+    const cutCmd = Buffer.from([GS, 0x56, 0x00]); // GS V 0 - フルカット
+    
+    // 全てを結合
+    const fullBuffer = Buffer.concat([initCmd, charsetCmd, textBuffer, feedCmd, cutCmd]);
+    
+    // ファイルに書き込み
+    fs.writeFileSync(tempFile, fullBuffer);
     
     // copyコマンドで共有プリンターへRaw印刷
     const command = `cmd /c copy /b "${tempFile}" "\\\\%COMPUTERNAME%\\${PRINTER_NAME}"`;
