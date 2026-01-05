@@ -2247,6 +2247,119 @@ def build_ticket(header: 'OrderHeader', details: list['OrderItem'], table: 'Tabl
     return "\n".join(lines) + "\n\n"
 
 
+# --- 新しい注文伝票テキストの生成（既注文と新しい注文を区別） -----
+def build_ticket_with_totals(header, items, table, new_item_ids):
+    """
+    既注文と新しい注文を区別して印刷する新しいフォーマット
+    
+    Args:
+        header: OrderHeader オブジェクト
+        items: OrderItem のリスト（すべての注文明細）
+        table: TableSeat オブジェクト
+        new_item_ids: 今回送信した商品のmenu_idのリスト
+    
+    Returns:
+        印刷用テキスト
+    """
+    lines = []
+    width = 42
+    pad = lambda s: (s[:width]).ljust(width)
+    hr = "-" * width
+    
+    # ヘッダー情報
+    header_id = getattr(header, 'id', 'N/A')
+    table_no = getattr(table, 'table_no', None) if table else None
+    
+    if not table_no or table_no == 0:
+        table_id_for_debug = getattr(header, 'table_id', 'N/A')
+        table_no_str = f"不明 (ID:{table_id_for_debug})"
+    else:
+        table_no_str = str(table_no)
+    
+    opened_at = getattr(header, 'opened_at', 'N/A')
+    
+    # ヘッダー
+    lines.append("")
+    lines.append(pad("        *** 注文伝票 ***"))
+    lines.append(hr)
+    lines.append(pad(f"注文番号: {header_id}"))
+    lines.append(pad(f"テーブル: {table_no_str}"))
+    lines.append(pad(f"時刻: {opened_at}"))
+    lines.append(hr)
+    
+    # 既注文と新しい注文を区別
+    existing_items = []
+    new_items = []
+    
+    for item in items:
+        menu_id = getattr(item, 'menu_id', None)
+        if menu_id in new_item_ids:
+            new_items.append(item)
+        else:
+            existing_items.append(item)
+    
+    # 既注文の合計金額を計算
+    existing_total = 0
+    for item in existing_items:
+        price = getattr(item, 'unit_excl', 0) or 0
+        qty = getattr(item, 'qty', 1) or 1
+        existing_total += price * qty
+    
+    # 既注文の合計金額を表示（既注文がある場合のみ）
+    if existing_items:
+        lines.append("")
+        lines.append(pad("【既注文の合計金額】"))
+        lines.append(pad(f"              ￥{existing_total:,}"))
+        lines.append(hr)
+    
+    # 新しい注文を表示
+    lines.append("")
+    lines.append(pad("【新しい注文】"))
+    lines.append("")
+    
+    new_total = 0
+    if new_items:
+        for item in new_items:
+            menu_name = getattr(getattr(item, 'menu', None), 'name', f"不明 (ID:{getattr(item, 'menu_id', 'N/A')})"))
+            qty = getattr(item, 'qty', 1) or 1
+            price = getattr(item, 'unit_excl', 0) or 0
+            subtotal = price * qty
+            new_total += subtotal
+            memo = getattr(item, 'memo', '')
+            
+            lines.append(pad(f"■ {menu_name}"))
+            lines.append(pad(f"   数量: {qty}個"))
+            lines.append(pad(f"   単価:      ￥{price:,}"))
+            lines.append(pad(f"   金額:      ￥{subtotal:,}"))
+            
+            if memo:
+                lines.append(pad(f"   [メモ] {memo}"))
+            
+            lines.append("")
+    else:
+        lines.append(pad("--- 新しい注文はありません ---"))
+        lines.append("")
+    
+    lines.append(hr)
+    
+    # 新しい注文の合計金額（小計）
+    lines.append("")
+    lines.append(pad("【新しい注文の合計金額（小計）】"))
+    lines.append(pad(f"              ￥{new_total:,}"))
+    lines.append(hr)
+    
+    # 既注文＋新しい注文の合計金額
+    grand_total = existing_total + new_total
+    lines.append("")
+    lines.append(pad("【既注文＋新しい注文の合計金額】"))
+    lines.append(pad(f"              ￥{grand_total:,}"))
+    lines.append("=" * width)
+    lines.append("")
+    lines.append("")
+    
+    return "\n".join(lines) + "\n"
+
+
 # --- ESC/POS（TCP）プリンタへの印刷 --------------------------------------------
 def print_escpos_tcp(text, conn_str):
     host, port = re.sub(r'^tcp://', '', conn_str).split(':')
@@ -15578,6 +15691,7 @@ def api_print_data(order_id: int):
     レスポンス:
       { "text": "<ESC/POSテキスト>" }
     """
+    from flask import request
     s = SessionLocal()
     try:
         header = s.get(OrderHeader, order_id)
@@ -15593,8 +15707,12 @@ def api_print_data(order_id: int):
         # 注文明細を取得
         items = s.query(OrderItem).filter(OrderItem.order_id == order_id).all()
         
-        # チケットを生成（デフォルト設定）
-        ticket = build_ticket(header, items, table=table, width=42, title="注文伝票")
+        # 今回送信した商品IDを取得
+        new_items_param = request.args.get('new_items', '')
+        new_item_ids = [int(x) for x in new_items_param.split(',') if x.strip().isdigit()] if new_items_param else []
+        
+        # 新しいフォーマットでチケットを生成
+        ticket = build_ticket_with_totals(header, items, table, new_item_ids)
         
         return jsonify({"text": ticket})
     except Exception as e:
