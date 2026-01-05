@@ -50,8 +50,7 @@ function printText(text) {
     fs.writeFileSync(tempFile, shiftJisBuffer);
     
     // copyコマンドで共有プリンターへRaw印刷
-    const shareName = PRINTER_NAME.replace(/ /g, '_');
-    const command = `cmd /c copy /b "${tempFile}" "\\\\%COMPUTERNAME%\\${shareName}"`;
+    const command = `cmd /c copy /b "${tempFile}" "\\\\%COMPUTERNAME%\\${PRINTER_NAME}"`;
     
     console.log(`[DEBUG] 印刷コマンド: ${command}`);
     
