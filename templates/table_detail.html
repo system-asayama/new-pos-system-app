@@ -280,9 +280,9 @@
   <a class="btn" href="{{ url_for('invoice_print', order_id=orders[0].id) }}" target="_blank" style="background: #059669; color: white;">
     📄 領収書印刷
   </a>
-  <button class="btn" onclick="printOrderTicket({{ orders[0].id }})" style="background: #f59e0b; color: white;">
+  <a class="btn" href="{{ url_for('bill_print', order_id=orders[0].id) }}" target="_blank" style="background: #f59e0b; color: white;">
     🍴 注文伝票印刷
-  </button>
+  </a>
   {% endif %}
   <a id="btn-back" class="btn" href="{{ url_for('floor') }}">戻る</a>
 </div>
@@ -579,56 +579,7 @@
   }
   
   /* ============ 注文伝票印刷 ============ */
-  async function printOrderTicket(order_id) {
-    try {
-      // 注文情報を取得
-      const r = await fetch(`/admin/order/${order_id}/detail/json`);
-      const data = await r.json();
-      
-      if (!data || !data.ok || !data.items) {
-        alert('注文情報の取得に失敗しました');
-        return;
-      }
-      
-      // テーブル名を取得（table_detail.htmlのコンテキストから）
-      const tableName = '{{ table.table_no if table else "不明" }}';
-      
-      // 印刷データを作成
-      const printData = {
-        orderNumber: data.order.id,
-        tableName: tableName,
-        items: data.items.filter(item => item.status !== '取消').map(item => ({
-          name: item.name,
-          quantity: item.qty,
-          price: item.unit_incl || 0,
-          memo: item.memo || ''
-        })),
-        timestamp: new Date().toLocaleString('ja-JP')
-      };
-      
-      // 印刷サーバーにHTTPリクエストを送信
-      const printUrl = localStorage.getItem('printerServerUrl') || 'http://localhost:3001';
-      const printResponse = await fetch(`${printUrl}/print/order`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(printData)
-      });
-      
-      if (!printResponse.ok) {
-        throw new Error('印刷サーバーからエラーが返されました');
-      }
-      
-      const result = await printResponse.json();
-      if (result.success) {
-        alert('注文伝票を印刷しました');
-      } else {
-        alert('印刷に失敗しました: ' + (result.error || '不明なエラー'));
-      }
-    } catch (e) {
-      console.error('印刷エラー:', e);
-      alert('印刷に失敗しました: ' + e.message + '\n\n印刷サーバーが起動しているか確認してください。');
-    }
-  }
+  // 注: 注文伝票印刷は/bill/<order_id>へのリンクでプレビュー画面に移行するように変更されました
 </script>
 
 {% endblock %}
