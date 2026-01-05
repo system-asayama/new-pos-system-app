@@ -2318,12 +2318,12 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
     lines.append("")
     
     # 小計と合計
-    lines.append(pad(f"小計".ljust(30) + f"￥{subtotal:,}".rjust(12)))
+    lines.append(pad(f"小計".ljust(22) + f"￥{subtotal:,}".rjust(10)))
     
     # 消費税は表示しない（必要に応じて追加）
     
     lines.append("")
-    lines.append(pad(f"合計".ljust(30) + f"￥{subtotal:,}".rjust(12)))
+    lines.append(pad(f"合計".ljust(22) + f"￥{subtotal:,}".rjust(10)))
     lines.append(hr)
     
     return "\n".join(lines) + "\n"
