@@ -2320,7 +2320,7 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
     new_total = 0
     if new_items:
         for item in new_items:
-            menu_name = getattr(getattr(item, 'menu', None), 'name', f"不明 (ID:{getattr(item, 'menu_id', 'N/A')})"))
+            menu_name = getattr(getattr(item, 'menu', None), 'name', f"不明 (ID:{getattr(item, 'menu_id', 'N/A')})")
             qty = getattr(item, 'qty', 1) or 1
             price = getattr(item, 'unit_excl', 0) or 0
             subtotal = price * qty
