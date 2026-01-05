@@ -2328,36 +2328,42 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
     else:
         table_no_str = str(table_no)
     
-    opened_at = getattr(header, 'opened_at', 'N/A')
+    # 注文時刻：今回送信された商品の最新added_atを取得
+    from datetime import datetime, timezone, timedelta
+    order_time = None
+    if new_items:
+        # 今回の商品の中で最新のadded_atを取得
+        added_times = [getattr(item, 'added_at', None) for item in new_items if getattr(item, 'added_at', None) is not None]
+        if added_times:
+            order_time = max(added_times)
     
     # 日時をJST（日本時間）に変換
-    from datetime import datetime, timezone, timedelta
-    if opened_at != 'N/A' and opened_at is not None:
+    if order_time is not None:
         try:
-            # opened_atがdatetimeオブジェクトの場合
-            if isinstance(opened_at, datetime):
+            # order_timeがdatetimeオブジェクトの場合
+            if isinstance(order_time, datetime):
                 # UTCからJST（UTC+9）に変換
                 jst = timezone(timedelta(hours=9))
-                if opened_at.tzinfo is None:
+                if order_time.tzinfo is None:
                     # timezone情報がない場合はUTCとみなす
-                    opened_at_utc = opened_at.replace(tzinfo=timezone.utc)
+                    order_time_utc = order_time.replace(tzinfo=timezone.utc)
                 else:
-                    opened_at_utc = opened_at
-                opened_at_jst = opened_at_utc.astimezone(jst)
-                opened_at_str = opened_at_jst.strftime("%Y-%m-%d %H:%M:%S")
+                    order_time_utc = order_time
+                order_time_jst = order_time_utc.astimezone(jst)
+                order_time_str = order_time_jst.strftime("%Y-%m-%d %H:%M:%S")
             else:
-                opened_at_str = str(opened_at)
+                order_time_str = str(order_time)
         except Exception as e:
             app.logger.error(f"[build_ticket] datetime conversion error: {e}")
-            opened_at_str = str(opened_at)
+            order_time_str = str(order_time)
     else:
-        opened_at_str = 'N/A'
+        order_time_str = 'N/A'
     
     # ヘッダー
     lines.append("")
     lines.append(pad("ホルモンダイニングGON").center(width))
     lines.append("")
-    lines.append(pad(f"日時: {opened_at_str}"))
+    lines.append(pad(f"日時: {order_time_str}"))
     lines.append(pad(f"テーブル: {table_no_str}"))
     lines.append(pad(f"注文番号: #{header_id}"))
     lines.append("")
