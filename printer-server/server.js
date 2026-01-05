@@ -52,7 +52,7 @@ function printText(text) {
     // PowerShellで印刷（デフォルトエンコーディングで読み込み）
     const escapedFile = tempFile.replace(/\\/g, '\\\\');
     const escapedPrinter = PRINTER_NAME.replace(/'/g, "''");
-    const command = `powershell -Command "Get-Content '${escapedFile}' -Encoding Default | Out-Printer -Name '${escapedPrinter}'"`;
+    const command = `powershell -Command "Get-Content '${escapedFile}' -Raw -Encoding Default | Out-Printer -Name '${escapedPrinter}'"`;
     
     exec(command, (error, stdout, stderr) => {
       // 一時ファイルを削除
