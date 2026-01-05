@@ -2372,13 +2372,18 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
     lines.append("")
     
     # 小計と合計
-    # 商品行と金額位置を揃える（28文字 + 15文字右寄せ = 43文字）
-    lines.append(pad(f"小計".ljust(28) + f"￥{subtotal:,}".rjust(15)))
+    # 商品行と金額位置を揃える（27文字幅 + 16文字右寄せ = 43文字）
+    # pad_to_widthを使用して全角文字の幅を正確に計算
+    subtotal_label = pad_to_width("小計", 27, 'left')
+    subtotal_amount = f"￥{subtotal:,}".rjust(16)
+    lines.append(pad(f"{subtotal_label}{subtotal_amount}"))
     
     # 消費税は表示しない（必要に応じて追加）
     
     lines.append("")
-    lines.append(pad(f"合計".ljust(28) + f"￥{subtotal:,}".rjust(15)))
+    total_label = pad_to_width("合計", 27, 'left')
+    total_amount = f"￥{subtotal:,}".rjust(16)
+    lines.append(pad(f"{total_label}{total_amount}"))
     lines.append(hr)
     
     return "\n".join(lines) + "\n"
