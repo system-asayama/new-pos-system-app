@@ -2266,6 +2266,57 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
     pad = lambda s: (s[:width]).ljust(width)
     hr = "-" * 48  # 点線は48文字（全角文字対応）
     
+    # 全角文字の表示幅を考慮した整形関数
+    def get_display_width(s):
+        """文字列の表示幅を計算（全角=2, 半角=1）"""
+        width = 0
+        for char in s:
+            if ord(char) > 0x7F:  # ASCII範囲外
+                width += 2
+            else:
+                width += 1
+        return width
+    
+    def pad_to_width(s, target_width, align='left'):
+        """
+        文字列を指定した表示幅に調整
+        
+        Args:
+            s: 元の文字列
+            target_width: 目標の表示幅（全角=2, 半角=1でカウント）
+            align: 'left' or 'right'
+        
+        Returns:
+            調整後の文字列
+        """
+        current_width = get_display_width(s)
+        
+        if current_width > target_width:
+            # 幅を超える場合は切り詰める
+            result = ""
+            width = 0
+            for char in s:
+                char_width = 2 if ord(char) > 0x7F else 1
+                if width + char_width <= target_width:
+                    result += char
+                    width += char_width
+                else:
+                    break
+            # 切り詰めた後、まだ幅が足りない場合はスペースで埋める
+            padding = target_width - get_display_width(result)
+            if align == 'left':
+                result += ' ' * padding
+            else:
+                result = ' ' * padding + result
+            return result
+        else:
+            # 幅が足りない場合はスペースで埋める
+            padding = target_width - current_width
+            if align == 'left':
+                return s + ' ' * padding
+            else:
+                return ' ' * padding + s
+    
     # ヘッダー情報
     header_id = getattr(header, 'id', 'N/A')
     table_no = getattr(table, 'table_no', None) if table else None
@@ -2310,9 +2361,10 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
         subtotal += amount
         
         # レシートと同じフォーマット: 商品名(26文字) 数量(4桁) 金額(右寄せ)
-        name_display = menu_name[:26].ljust(26)
+        # 全角文字の表示幅を考慮して整形
+        name_display = pad_to_width(menu_name, 26, 'left')
         qty_display = str(qty).rjust(4)
-        amount_display = f"￥{amount:,}" .rjust(11)
+        amount_display = f"￥{amount:,}".rjust(11)
         
         lines.append(pad(f"{name_display}{qty_display} {amount_display}"))
     
