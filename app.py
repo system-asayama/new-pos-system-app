@@ -2341,7 +2341,7 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
     # 商品ヘッダー（レシートと同じフォーマット）
     # 商品名(22文字) + 数量(4文字右寄せ) + スペース + 金額(15文字右寄せ)
     # 手動調整: 全角文字の幅を考慮して固定文字列を使用
-    lines.append(pad("商品名                  数量          金額"))
+    lines.append(pad("商品名                数量            金額"))
     lines.append(hr)
     
     # 今回送信した商品のみを表示（OrderItem IDでフィルタリング）
