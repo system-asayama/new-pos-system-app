@@ -3,6 +3,7 @@ const cors = require('cors');
 const { exec } = require('child_process');
 const os = require('os');
 const iconv = require('iconv-lite');
+const printer = require('printer');
 
 const app = express();
 const PORT = 3001;
@@ -33,43 +34,31 @@ function checkPrinter() {
   });
 }
 
-// テキストファイルを作成して印刷（Windows、Shift-JIS、Raw印刷）
+// テキストを印刷（printerパッケージ使用）
 function printText(text) {
   return new Promise((resolve, reject) => {
-    if (os.platform() !== 'win32') {
-      reject(new Error('Windowsのみサポートしています'));
-      return;
+    try {
+      // Shift-JIS（CP932）でエンコード
+      const shiftJisBuffer = iconv.encode(text, 'shift_jis');
+      
+      // printerパッケージで印刷
+      printer.printDirect({
+        data: shiftJisBuffer,
+        printer: PRINTER_NAME,
+        type: 'RAW',
+        success: function(jobID) {
+          console.log(`印刷ジョブ送信成功: ${jobID}`);
+          resolve();
+        },
+        error: function(err) {
+          console.error('印刷エラー:', err);
+          reject(err);
+        }
+      });
+    } catch (error) {
+      console.error('印刷エラー:', error);
+      reject(error);
     }
-    
-    const fs = require('fs');
-    const path = require('path');
-    const tempFile = path.join(os.tmpdir(), `print_${Date.now()}.txt`);
-    
-    // Shift-JIS（CP932）でテキストファイルを作成
-    const shiftJisBuffer = iconv.encode(text, 'shift_jis');
-    fs.writeFileSync(tempFile, shiftJisBuffer);
-    
-    // copyコマンドでRaw印刷（バイナリモード）
-    const escapedPrinter = PRINTER_NAME;
-    const command = `cmd /c copy /b "${tempFile}" "\\\\localhost\\${escapedPrinter}"`;
-    
-    exec(command, (error, stdout, stderr) => {
-      // 一時ファイルを削除
-      try {
-        fs.unlinkSync(tempFile);
-      } catch (e) {
-        console.error('一時ファイル削除エラー:', e);
-      }
-      
-      if (error) {
-        console.error('印刷エラー:', error);
-        console.error('stderr:', stderr);
-        reject(error);
-        return;
-      }
-      
-      resolve();
-    });
   });
 }
 
