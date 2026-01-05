@@ -161,6 +161,127 @@ app.post('/print/receipt', async (req, res) => {
   }
 });
 
+// 汎用印刷エンドポイント（ブラウザから直接呼び出し用）
+app.post('/print', async (req, res) => {
+  const { type, data } = req.body;
+
+  // typeに応じて適切な印刷処理を実行
+  if (type === 'order') {
+    // 注文伝票印刷
+    const { orderNumber, tableName, items, timestamp } = data;
+    
+    const isConnected = await checkPrinter();
+    if (!isConnected) {
+      return res.status(500).json({ error: 'プリンターが見つかりません' });
+    }
+
+    try {
+      let text = '';
+      
+      // ヘッダー（大きめ）
+      text += '\r\n';
+      text += '        *** 注文伝票 ***\r\n';
+      text += '--------------------------------\r\n';
+      text += `注文番号: ${orderNumber}\r\n`;
+      text += `テーブル: ${tableName}\r\n`;
+      text += `時刻: ${timestamp}\r\n`;
+      text += '--------------------------------\r\n\r\n';
+      
+      // 商品リスト
+      let totalAmount = 0;
+      items.forEach(item => {
+        const price = item.price || 0;
+        const quantity = item.quantity || 1;
+        const subtotal = price * quantity;
+        totalAmount += subtotal;
+        
+        text += `\r\n`;
+        text += `■ ${item.name}\r\n`;
+        text += `\r\n`;
+        text += `   数量: ${quantity}個\r\n`;
+        text += `\r\n`;
+        text += `   単価:      ￥${price.toLocaleString()}\r\n`;
+        text += `   小計:      ￥${subtotal.toLocaleString()}\r\n`;
+        
+        if (item.memo) {
+          text += `\r\n`;
+          text += `   [メモ] ${item.memo}\r\n`;
+        }
+        text += `\r\n`;
+        text += '--------------------------------\r\n';
+      });
+      
+      text += `\r\n\r\n`;
+      text += `================================\r\n`;
+      text += `\r\n`;
+      text += `      ■■ 合計金額 ■■\r\n`;
+      text += `\r\n`;
+      text += `\r\n`;
+      text += `        ￥ ${totalAmount.toLocaleString()}\r\n`;
+      text += `\r\n`;
+      text += `\r\n`;
+      text += `================================\r\n`;
+      text += '\r\n\r\n\r\n';
+
+      // 印刷実行
+      await printText(text);
+      res.json({ success: true, message: '注文伝票を印刷しました' });
+    } catch (error) {
+      console.error('印刷エラー:', error);
+      res.status(500).json({ error: '印刷に失敗しました', details: error.message });
+    }
+  } else if (type === 'receipt') {
+    // レシート印刷
+    const { orderNumber, tableName, items, subtotal, tax, total, timestamp } = data;
+    
+    const isConnected = await checkPrinter();
+    if (!isConnected) {
+      return res.status(500).json({ error: 'プリンターが見つかりません' });
+    }
+
+    try {
+      let text = '';
+      
+      // ヘッダー
+      text += '        GON POS System\r\n';
+      text += '       お会計レシート\r\n';
+      text += '--------------------------------\r\n';
+      text += `注文番号: ${orderNumber}\r\n`;
+      text += `テーブル: ${tableName}\r\n`;
+      text += `日時: ${timestamp}\r\n`;
+      text += '--------------------------------\r\n';
+      text += '商品明細\r\n';
+      text += '--------------------------------\r\n';
+      
+      // 商品リスト
+      items.forEach(item => {
+        const name = item.name.padEnd(20, ' ');
+        const qty = `x${item.quantity}`.padStart(4, ' ');
+        const price = `¥${item.price.toLocaleString()}`.padStart(8, ' ');
+        text += `${name}${qty}${price}\r\n`;
+      });
+      
+      // フッター
+      text += '--------------------------------\r\n';
+      text += `              小計: ¥${subtotal.toLocaleString()}\r\n`;
+      text += `            消費税: ¥${tax.toLocaleString()}\r\n`;
+      text += `              合計: ¥${total.toLocaleString()}\r\n`;
+      text += '--------------------------------\r\n';
+      text += '      ありがとうございました\r\n';
+      text += '\r\n\r\n\r\n';
+
+      // 印刷実行
+      await printText(text);
+      res.json({ success: true, message: 'レシートを印刷しました' });
+    } catch (error) {
+      console.error('印刷エラー:', error);
+      res.status(500).json({ error: '印刷に失敗しました', details: error.message });
+    }
+  } else {
+    res.status(400).json({ error: '不明な印刷タイプです', type });
+  }
+});
+
 // 注文伝票印刷（キッチン用）
 app.post('/print/order', async (req, res) => {
   const { orderNumber, tableName, items, timestamp } = req.body;
