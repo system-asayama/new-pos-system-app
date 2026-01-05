@@ -2453,10 +2453,11 @@ def print_escpos_tcp(text, conn_str):
     host, port = re.sub(r'^tcp://', '', conn_str).split(':')
     port = int(port)
     data = text.encode('cp932', errors='replace')
-    ESC_INIT = b'\x1b\x40'
-    CUT_FULL = b'\x1d\x56\x00'
+    ESC_INIT = b'\x1b\x40'  # プリンター初期化
+    ESC_FEED = b'\x1b\x64\x05'  # 5行分の改行フィード
+    CUT_FULL = b'\x1d\x56\x00'  # 全カット
     with socket.create_connection((host, port), timeout=2) as s:
-        s.sendall(ESC_INIT + data + b'\n\n\n' + CUT_FULL)
+        s.sendall(ESC_INIT + data + ESC_FEED + CUT_FULL)
 
 
 # --- CUPS 経由の印刷 -----------------------------------------------------------
