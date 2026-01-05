@@ -55,7 +55,10 @@ function printText(text) {
     // 国際文字セットを日本に設定
     const intlCharsetCmd = Buffer.from([ESC, 0x52, 0x08]); // ESC R 8 - Japan
     
-    // 漢字モードON (Shift-JIS)
+    // 漢字コード体系をShift-JISに設定
+    const kanjiCodeCmd = Buffer.from([0x1C, 0x43, 0x01]); // FS C 1 - Shift-JIS
+    
+    // 漢字モードON
     const kanjiModeCmd = Buffer.from([0x1C, 0x26]); // FS & - 漢字モードON
     
     // テキストをShift-JISでエンコード
@@ -66,7 +69,7 @@ function printText(text) {
     const cutCmd = Buffer.from([GS, 0x56, 0x00]); // GS V 0 - フルカット
     
     // 全てを結合
-    const fullBuffer = Buffer.concat([initCmd, intlCharsetCmd, kanjiModeCmd, textBuffer, feedCmd, cutCmd]);
+    const fullBuffer = Buffer.concat([initCmd, intlCharsetCmd, kanjiCodeCmd, kanjiModeCmd, textBuffer, feedCmd, cutCmd]);
     
     // ファイルに書き込み
     fs.writeFileSync(tempFile, fullBuffer);
