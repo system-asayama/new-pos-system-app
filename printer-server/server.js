@@ -50,9 +50,8 @@ function printText(text) {
     fs.writeFileSync(tempFile, shiftJisBuffer);
     
     // copyコマンドでRaw印刷（バイナリモード）
-    const escapedFile = tempFile.replace(/\\/g, '/');
     const escapedPrinter = PRINTER_NAME;
-    const command = `cmd /c "copy /b "${escapedFile}" "\\\\localhost\\${escapedPrinter}""`;
+    const command = `cmd /c copy /b "${tempFile}" "\\\\localhost\\${escapedPrinter}"`;
     
     exec(command, (error, stdout, stderr) => {
       // 一時ファイルを削除
