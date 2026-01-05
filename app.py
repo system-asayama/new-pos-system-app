@@ -2262,7 +2262,7 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
         印刷用テキスト
     """
     lines = []
-    width = 42
+    width = 43  # 42から43に変更（商品行の金額16文字対応）
     pad = lambda s: (s[:width]).ljust(width)
     hr = "-" * 48  # 点線は48文字（全角文字対応）
     
