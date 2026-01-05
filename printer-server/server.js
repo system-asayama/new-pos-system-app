@@ -204,7 +204,10 @@ app.post('/print', async (req, res) => {
       text += `時刻: ${timestamp}\r\n`;
       text += '--------------------------------\r\n\r\n';
       
-      // 商品リスト
+      // 商品リスト（レシートと同じフォーマット）
+      text += '商品名                  数量    金額\r\n';
+      text += '--------------------------------\r\n';
+      
       let totalAmount = 0;
       items.forEach(item => {
         const price = item.price || 0;
@@ -212,20 +215,16 @@ app.post('/print', async (req, res) => {
         const subtotal = price * quantity;
         totalAmount += subtotal;
         
-        text += `\r\n`;
-        text += `■ ${item.name}\r\n`;
-        text += `\r\n`;
-        text += `   数量: ${quantity}個\r\n`;
-        text += `\r\n`;
-        text += `   単価:      ￥${price.toLocaleString()}\r\n`;
-        text += `   小計:      ￥${subtotal.toLocaleString()}\r\n`;
+        // 1行表示: 商品名(26文字) 数量(4桁) 金額(右寄せ)
+        const name = item.name.substring(0, 26).padEnd(26, ' ');
+        const qty = String(quantity).padStart(4, ' ');
+        const amount = `￥${subtotal.toLocaleString()}`.padStart(11, ' ');
+        text += `${name}${qty} ${amount}\r\n`;
         
+        // メモがある場合は次の行に表示
         if (item.memo) {
-          text += `\r\n`;
-          text += `   [メモ] ${item.memo}\r\n`;
+          text += `  ※ ${item.memo}\r\n`;
         }
-        text += `\r\n`;
-        text += '--------------------------------\r\n';
       });
       
       text += `\r\n\r\n`;
@@ -320,7 +319,10 @@ app.post('/print/order', async (req, res) => {
     text += `時刻: ${timestamp}\r\n`;
     text += '--------------------------------\r\n\r\n';
     
-    // 商品リスト
+    // 商品リスト（レシートと同じフォーマット）
+    text += '商品名                  数量    金額\r\n';
+    text += '--------------------------------\r\n';
+    
     let totalAmount = 0;
     items.forEach(item => {
       const price = item.price || 0;
@@ -328,20 +330,16 @@ app.post('/print/order', async (req, res) => {
       const subtotal = price * quantity;
       totalAmount += subtotal;
       
-      text += `\r\n`;
-      text += `■ ${item.name}\r\n`;
-      text += `\r\n`;
-      text += `   数量: ${quantity}個\r\n`;
-      text += `\r\n`;
-      text += `   単価:      ￥${price.toLocaleString()}\r\n`;
-      text += `   小計:      ￥${subtotal.toLocaleString()}\r\n`;
+      // 1行表示: 商品名(26文字) 数量(4桁) 金額(右寄せ)
+      const name = item.name.substring(0, 26).padEnd(26, ' ');
+      const qty = String(quantity).padStart(4, ' ');
+      const amount = `￥${subtotal.toLocaleString()}`.padStart(11, ' ');
+      text += `${name}${qty} ${amount}\r\n`;
       
+      // メモがある場合は次の行に表示
       if (item.memo) {
-        text += `\r\n`;
-        text += `   [メモ] ${item.memo}\r\n`;
+        text += `  ※ ${item.memo}\r\n`;
       }
-      text += `\r\n`;
-      text += '--------------------------------\r\n';
     });
     
     text += `\r\n\r\n`;
