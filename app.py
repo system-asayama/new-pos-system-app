@@ -2288,7 +2288,11 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
     lines.append("")
     
     # 商品ヘッダー（レシートと同じフォーマット）
-    lines.append(pad("商品名                  数量    金額"))
+    # 商品名(26文字) + 数量(4文字右寄せ) + スペース + 金額(11文字右寄せ)
+    header_name = "商品名".ljust(26)
+    header_qty = "数量".rjust(4)
+    header_amount = "金額".rjust(11)
+    lines.append(pad(f"{header_name}{header_qty} {header_amount}"))
     lines.append(hr)
     
     # 今回送信した商品のみを表示（OrderItem IDでフィルタリング）
