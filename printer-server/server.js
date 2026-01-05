@@ -164,6 +164,10 @@ app.post('/print/receipt', async (req, res) => {
 // 汎用印刷エンドポイント（ブラウザから直接呼び出し用）
 app.post('/print', async (req, res) => {
   const { type, data, text } = req.body;
+  console.log('[DEBUG] /print リクエスト受信');
+  console.log('[DEBUG] type:', type);
+  console.log('[DEBUG] text:', text ? 'あり' : 'なし');
+  console.log('[DEBUG] data:', JSON.stringify(data, null, 2));
 
   // textフィールドがある場合は直接印刷
   if (text) {
