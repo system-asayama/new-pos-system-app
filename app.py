@@ -2357,15 +2357,23 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
     for item in new_items:
         menu_name = getattr(getattr(item, 'menu', None), 'name', f"不明 (ID:{getattr(item, 'menu_id', 'N/A')})")
         qty = getattr(item, 'qty', 1) or 1
-        price = getattr(item, 'unit_price', 0) or 0
-        amount = price * qty
-        subtotal += amount
+        unit_price_excl = getattr(item, 'unit_price', 0) or 0  # 税抜単価
+        tax_rate = getattr(item, 'tax_rate', 0.10) or 0.10  # 税率
+        
+        # 税込単価を計算
+        import math
+        unit_tax = int(math.floor(unit_price_excl * tax_rate))
+        unit_price_incl = unit_price_excl + unit_tax
+        
+        # 税込金額
+        amount_incl = unit_price_incl * qty
+        subtotal += amount_incl
         
         # レシートと同じフォーマット: 商品名(22文字) 数量(4桁) 金額(16文字右寄せ)
         # 全角文字の表示幅を考慮して整形
         name_display = pad_to_width(menu_name, 22, 'left')
         qty_display = str(qty).rjust(4)
-        amount_display = f"￥{amount:,}".rjust(16)
+        amount_display = f"￥{amount_incl:,}".rjust(16)
         
         lines.append(pad(f"{name_display}{qty_display} {amount_display}"))
     
@@ -2382,8 +2390,14 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
     for item in items:
         if getattr(item, 'id', None) not in new_item_ids:
             qty = getattr(item, 'qty', 1) or 1
-            price = getattr(item, 'unit_price', 0) or 0
-            previous_total += price * qty
+            unit_price_excl = getattr(item, 'unit_price', 0) or 0
+            tax_rate = getattr(item, 'tax_rate', 0.10) or 0.10
+            
+            # 税込単価を計算
+            unit_tax = int(math.floor(unit_price_excl * tax_rate))
+            unit_price_incl = unit_price_excl + unit_tax
+            
+            previous_total += unit_price_incl * qty
     
     lines.append("")
     previous_label = pad_to_width("既注文合計", 27, 'left')
