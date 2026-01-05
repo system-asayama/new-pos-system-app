@@ -159,7 +159,7 @@
     
     <div class="receipt-body">
         <div style="margin-bottom: 10px;">
-            <div>日時: {{ order.opened_at }}</div>
+            <div>日時: {{ opened_at_jst or order.opened_at }}</div>
             <div>テーブル: {{ table.table_no }}</div>
             <div>注文番号: #{{ order.id }}</div>
         </div>

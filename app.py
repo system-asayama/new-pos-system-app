@@ -17276,6 +17276,22 @@ def bill_print(order_id):
         # テーブル情報を取得
         table = order.table
         
+        # opened_atを日本時間（JST）に変換
+        from datetime import datetime, timedelta
+        opened_at_jst = None
+        if order.opened_at:
+            try:
+                # 文字列の場合はdatetime型に変換
+                if isinstance(order.opened_at, str):
+                    dt = datetime.strptime(order.opened_at, "%Y-%m-%d %H:%M:%S")
+                else:
+                    dt = order.opened_at
+                # UTCとみなして+9時間
+                dt_jst = dt + timedelta(hours=9)
+                opened_at_jst = dt_jst.strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                opened_at_jst = str(order.opened_at)
+        
         # 合計金額を再計算（キャンセルを反映）
         import math
         subtotal_excl = 0
@@ -17319,7 +17335,8 @@ def bill_print(order_id):
             table=table,
             subtotal=int(subtotal_excl),
             tax=int(tax_total),
-            total=int(total_incl)
+            total=int(total_incl),
+            opened_at_jst=opened_at_jst
         )
     finally:
         s.close()
@@ -17356,6 +17373,22 @@ def receipt_print(order_id):
         
         # テーブル情報を取得
         table = order.table
+        
+        # opened_atを日本時間（JST）に変換
+        from datetime import datetime, timedelta
+        opened_at_jst = None
+        if order.opened_at:
+            try:
+                # 文字列の場合はdatetime型に変換
+                if isinstance(order.opened_at, str):
+                    dt = datetime.strptime(order.opened_at, "%Y-%m-%d %H:%M:%S")
+                else:
+                    dt = order.opened_at
+                # UTCとみなして+9時間
+                dt_jst = dt + timedelta(hours=9)
+                opened_at_jst = dt_jst.strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                opened_at_jst = str(order.opened_at)
         
         # 合計金額を再計算（キャンセルを反映）
         import math
@@ -17400,7 +17433,8 @@ def receipt_print(order_id):
             table=table,
             subtotal=int(subtotal_excl),
             tax=int(tax_total),
-            total=int(total_incl)
+            total=int(total_incl),
+            opened_at_jst=opened_at_jst
         )
     finally:
         s.close()
@@ -17444,6 +17478,22 @@ def invoice_print(order_id):
         
         # 宛名（URLパラメータから取得）
         recipient = request.args.get("recipient", "")
+        
+        # opened_atを日本時間（JST）に変換
+        from datetime import timedelta
+        opened_at_jst = None
+        if order.opened_at:
+            try:
+                # 文字列の場合はdatetime型に変換
+                if isinstance(order.opened_at, str):
+                    dt = datetime.strptime(order.opened_at, "%Y-%m-%d %H:%M:%S")
+                else:
+                    dt = order.opened_at
+                # UTCとみなして+9時間
+                dt_jst = dt + timedelta(hours=9)
+                opened_at_jst = dt_jst.strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                opened_at_jst = str(order.opened_at)
         
         # 合計金額を再計算（キャンセルを反映）
         import math
@@ -17490,7 +17540,8 @@ def invoice_print(order_id):
             recipient=recipient,
             subtotal=int(subtotal_excl),
             tax=int(tax_total),
-            total=int(total_incl)
+            total=int(total_incl),
+            opened_at_jst=opened_at_jst
         )
     finally:
         s.close()
