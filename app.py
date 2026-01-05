@@ -2262,7 +2262,7 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
         印刷用テキスト
     """
     lines = []
-    width = 42
+    width = 32
     pad = lambda s: (s[:width]).ljust(width)
     hr = "-" * width
     
@@ -2308,9 +2308,9 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
         subtotal += amount
         
         # レシートと同じフォーマット: 商品名(26文字) 数量(4桁) 金額(右寄せ)
-        name_display = menu_name[:26].ljust(26)
-        qty_display = str(qty).rjust(4)
-        amount_display = f"￥{amount:,}".rjust(11)
+        name_display = menu_name[:18].ljust(18)
+        qty_display = str(qty).rjust(3)
+        amount_display = f"￥{amount:,}".rjust(9)
         
         lines.append(pad(f"{name_display}{qty_display} {amount_display}"))
     
