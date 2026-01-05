@@ -1036,7 +1036,11 @@ document.addEventListener('DOMContentLoaded', () => {
       
       // 印刷データを取得（今回送信した商品IDを渡す）
       const newItemIds = items.map(it => it.menu_id).join(',');
-      const printDataRes = await fetch(`/api/print_data/${orderId}?new_items=${newItemIds}`);
+      console.log('[DEBUG] triggerPrint - items:', items);
+      console.log('[DEBUG] triggerPrint - newItemIds:', newItemIds);
+      const printDataUrl = `/api/print_data/${orderId}?new_items=${newItemIds}`;
+      console.log('[DEBUG] triggerPrint - printDataUrl:', printDataUrl);
+      const printDataRes = await fetch(printDataUrl);
       if (!printDataRes.ok) {
         console.error('印刷データの取得に失敗しました');
         return;
