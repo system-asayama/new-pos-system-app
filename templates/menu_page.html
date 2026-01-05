@@ -1041,23 +1041,28 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       const printData = await printDataRes.json();
-      if (!printData || !printData.text) {
+      if (!printData) {
         console.error('印刷データが空です');
         return;
       }
       
-      // 印刷サーバーに送信
+      // 印刷サーバーに送信（新しい形式）
       const printUrl = printerConfig.printer_server_url.replace(/\/$/, '') + '/print';
       const printRes = await fetch(printUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: printData.text })
+        body: JSON.stringify({
+          type: 'order',
+          data: printData
+        })
       });
       
       if (printRes.ok) {
-        console.log('印刷リクエストが成功しました');
+        const result = await printRes.json();
+        console.log('印刷成功:', result.message);
       } else {
-        console.error('印刷リクエストが失敗しました:', printRes.status);
+        const error = await printRes.json().catch(() => ({}));
+        console.error('印刷リクエストが失敗しました:', printRes.status, error);
       }
     } catch (err) {
       console.error('印刷処理中にエラーが発生しました:', err);
