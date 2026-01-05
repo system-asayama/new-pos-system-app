@@ -2291,8 +2291,11 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
     lines.append(pad("商品名                  数量    金額"))
     lines.append(hr)
     
-    # 今回送信した商品のみを表示
-    new_items = [item for item in items if getattr(item, 'menu_id', None) in new_item_ids]
+    # 今回送信した商品のみを表示（new_item_idsが空の場合はすべて表示）
+    if new_item_ids:
+        new_items = [item for item in items if getattr(item, 'menu_id', None) in new_item_ids]
+    else:
+        new_items = items
     
     subtotal = 0
     for item in new_items:
