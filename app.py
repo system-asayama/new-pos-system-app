@@ -2262,7 +2262,7 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
         印刷用テキスト
     """
     lines = []
-    width = 42
+    width = 48
     pad = lambda s: (s[:width]).ljust(width)
     hr = "-" * width
     
@@ -2327,8 +2327,20 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
             new_total += subtotal
             memo = getattr(item, 'memo', '')
             
-            # 1行で表示: メニュー x数量 @単価 = 金額
-            lines.append(pad(f"■ {menu_name} x{qty} @￥{price:,} = ￥{subtotal:,}"))
+            # レシート形式: 商品名              単価  数量    金額
+            # 商品名は最大20文字、単価は8桁、数量は4桁、金額は右寄せ9桁
+            name_width = 20
+            price_width = 8
+            qty_width = 4
+            amount_width = 9
+            
+            # 各項目をフォーマット
+            display_name = menu_name[:name_width].ljust(name_width)
+            display_price = f"￥{price:,}".rjust(price_width)
+            display_qty = str(qty).rjust(qty_width)
+            display_amount = f"￥{subtotal:,}".rjust(amount_width)
+            
+            lines.append(pad(f"{display_name} {display_price} {display_qty} {display_amount}"))
             
             if memo:
                 lines.append(pad(f"  [メモ] {memo}"))
