@@ -2330,11 +2330,34 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
     
     opened_at = getattr(header, 'opened_at', 'N/A')
     
+    # 日時をJST（日本時間）に変換
+    from datetime import datetime, timezone, timedelta
+    if opened_at != 'N/A' and opened_at is not None:
+        try:
+            # opened_atがdatetimeオブジェクトの場合
+            if isinstance(opened_at, datetime):
+                # UTCからJST（UTC+9）に変換
+                jst = timezone(timedelta(hours=9))
+                if opened_at.tzinfo is None:
+                    # timezone情報がない場合はUTCとみなす
+                    opened_at_utc = opened_at.replace(tzinfo=timezone.utc)
+                else:
+                    opened_at_utc = opened_at
+                opened_at_jst = opened_at_utc.astimezone(jst)
+                opened_at_str = opened_at_jst.strftime("%Y-%m-%d %H:%M:%S")
+            else:
+                opened_at_str = str(opened_at)
+        except Exception as e:
+            app.logger.error(f"[build_ticket] datetime conversion error: {e}")
+            opened_at_str = str(opened_at)
+    else:
+        opened_at_str = 'N/A'
+    
     # ヘッダー
     lines.append("")
     lines.append(pad("ホルモンダイニングGON").center(width))
     lines.append("")
-    lines.append(pad(f"日時: {opened_at}"))
+    lines.append(pad(f"日時: {opened_at_str}"))
     lines.append(pad(f"テーブル: {table_no_str}"))
     lines.append(pad(f"注文番号: #{header_id}"))
     lines.append("")
