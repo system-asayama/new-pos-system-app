@@ -2328,6 +2328,10 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
     else:
         table_no_str = str(table_no)
     
+    # 今回送信した商品をフィルタリング
+    new_items = [item for item in items if getattr(item, 'id', None) in new_item_ids]
+    app.logger.debug(f"[build_ticket] filtered new_items count={len(new_items)}")
+    
     # 注文時刻：今回送信された商品の最新added_atを取得
     from datetime import datetime, timezone, timedelta
     order_time = None
@@ -2379,8 +2383,7 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
     app.logger.debug(f"[build_ticket] all items count={len(items)}")
     for item in items:
         app.logger.debug(f"[build_ticket] item.id={getattr(item, 'id', None)}, menu_id={getattr(item, 'menu_id', None)}")
-    new_items = [item for item in items if getattr(item, 'id', None) in new_item_ids]
-    app.logger.debug(f"[build_ticket] filtered new_items count={len(new_items)}")
+    # new_itemsは既に上で定義済み
     
     subtotal = 0
     for item in new_items:
