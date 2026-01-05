@@ -12732,11 +12732,11 @@ def api_order():
         s.commit()
         mark_floor_changed()
 
-        try:
-            # 💡 非同期印刷を削除し、同期的に印刷ジョブを呼び出す
-            trigger_print_job(order.id, items_to_print=new_items_for_print)
-        except Exception:
-            app.logger.exception("[api_order] failed to print")
+        # 💡 ブラウザ側で印刷処理を行うため、サーバー側の印刷処理は削除
+        # try:
+        #     trigger_print_job(order.id, items_to_print=new_items_for_print)
+        # except Exception:
+        #     app.logger.exception("[api_order] failed to print")
 
         return jsonify({
             "ok": True,
@@ -14072,12 +14072,11 @@ def staff_api_order():
         s.commit()  # ← コミット後に印刷トリガ
         mark_floor_changed()
 
-        # ★ 非同期印刷を削除し、同期的に印刷ジョブを呼び出す
-        try:
-            trigger_print_job(order.id, items_to_print=new_items_for_print)
-        except Exception:
-            # 印刷起動の失敗はレスポンスに影響させない
-            app.logger.exception("[staff_api_order] failed to print")
+        # 💡 ブラウザ側で印刷処理を行うため、サーバー側の印刷処理は削除
+        # try:
+        #     trigger_print_job(order.id, items_to_print=new_items_for_print)
+        # except Exception:
+        #     app.logger.exception("[staff_api_order] failed to print")
 
         return jsonify({
             "ok": True,
@@ -15513,6 +15512,69 @@ def api_staff_call_poll():
     except Exception as e:
         app.logger.error(f"[api_staff_call_poll] error: {e}", exc_info=True)
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# =========================================================
+# プリンター設定API（ブラウザ側印刷用）
+# =========================================================
+@app.route("/api/printer_config", methods=["GET"])
+def api_printer_config():
+    """
+    ブラウザから印刷サーバーにアクセスするための設定を返す
+    レスポンス:
+      { "printer_server_url": "http://192.168.1.100:3001" }
+    """
+    s = SessionLocal()
+    try:
+        sid = current_store_id()
+        # printer_server タイプのプリンターを検索
+        q = s.query(Printer).filter(Printer.kind == "printer_server", Printer.enabled == 1)
+        if sid is not None and hasattr(Printer, "store_id"):
+            q = q.filter(Printer.store_id == sid)
+        printer = q.first()
+        
+        if printer and printer.connection:
+            return jsonify({"printer_server_url": printer.connection})
+        else:
+            return jsonify({"printer_server_url": None})
+    except Exception as e:
+        app.logger.error(f"[api_printer_config] error: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+    finally:
+        s.close()
+
+
+@app.route("/api/print_data/<int:order_id>", methods=["GET"])
+def api_print_data(order_id: int):
+    """
+    指定された注文の印刷データを生成して返す
+    レスポンス:
+      { "text": "<ESC/POSテキスト>" }
+    """
+    s = SessionLocal()
+    try:
+        header = s.get(OrderHeader, order_id)
+        if not header:
+            return jsonify({"error": "order not found"}), 404
+        
+        # テーブル情報を取得
+        table = None
+        table_id = getattr(header, "table_id", None)
+        if table_id:
+            table = s.get(TableSeat, table_id)
+        
+        # 注文明細を取得
+        items = s.query(OrderItem).filter(OrderItem.order_id == order_id).all()
+        
+        # チケットを生成（デフォルト設定）
+        ticket = build_ticket(header, items, table=table, width=42, title="注文伝票")
+        
+        return jsonify({"text": ticket})
+    except Exception as e:
+        app.logger.error(f"[api_print_data] error: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+    finally:
+        s.close()
 
 
 # =========================================================

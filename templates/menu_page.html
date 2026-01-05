@@ -997,6 +997,13 @@ document.addEventListener('DOMContentLoaded', () => {
       msgEl.textContent='送信しました（注文番号: '+(data.order_id||'-')+'）';
       if(orderId==null && data.order_id){ orderId=Number(data.order_id) || data.order_id; document.body.dataset.orderId=String(orderId); }
       cart.splice(0); renderCart(); loadCurrentDetail();
+      
+      // 印刷処理をブラウザから実行
+      if(data.order_id){
+        triggerPrint(data.order_id, items).catch(err => {
+          console.error('印刷エラー:', err);
+        });
+      }
     }catch(e){ 
       if(e.message && (e.message.includes('セッションは終了') || e.message.includes('session closed'))){
         alert('このセッションは終了しました。ページを再読み込みします。');
@@ -1011,6 +1018,51 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
   document.getElementById('submit-btn')?.addEventListener('click', submitOrder);
+
+  // ===== 印刷処理 =====
+  async function triggerPrint(orderId, items) {
+    try {
+      // プリンター設定を取得
+      const printerRes = await fetch('/api/printer_config');
+      if (!printerRes.ok) {
+        console.warn('プリンター設定が取得できませんでした');
+        return;
+      }
+      const printerConfig = await printerRes.json();
+      if (!printerConfig || !printerConfig.printer_server_url) {
+        console.warn('印刷サーバーURLが設定されていません');
+        return;
+      }
+      
+      // 印刷データを取得
+      const printDataRes = await fetch(`/api/print_data/${orderId}`);
+      if (!printDataRes.ok) {
+        console.error('印刷データの取得に失敗しました');
+        return;
+      }
+      const printData = await printDataRes.json();
+      if (!printData || !printData.text) {
+        console.error('印刷データが空です');
+        return;
+      }
+      
+      // 印刷サーバーに送信
+      const printUrl = printerConfig.printer_server_url.replace(/\/$/, '') + '/print';
+      const printRes = await fetch(printUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: printData.text })
+      });
+      
+      if (printRes.ok) {
+        console.log('印刷リクエストが成功しました');
+      } else {
+        console.error('印刷リクエストが失敗しました:', printRes.status);
+      }
+    } catch (err) {
+      console.error('印刷処理中にエラーが発生しました:', err);
+    }
+  }
 
   // ===== 店員呼び出し =====
   const callStaffBtn = document.getElementById('call-staff-btn');
