@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>テナント管理者ポータル</h2>
+<p class="small" style="color:#666">
+  テナント単位の概要を確認できます。店舗や店舗管理者の詳細運用は各店舗の管理者画面で行います。
+</p>
+
+{% set _role = session.get('role') %}
+{% set is_sysadmin = (_role == 'sysadmin') %}
+
+<!-- テナント情報 -->
+<div class="card" style="margin-bottom:1rem;">
+  <h3>テナント情報</h3>
+  {% if tenant %}
+    <ul>
+      <li>ID: <strong>{{ tenant.id }}</strong></li>
+      <li>名称: <strong>{{ tenant.名称 }}</strong></li>
+      <li>slug: <code>{{ tenant.slug }}</code></li>
+    </ul>
+
+    <!-- ボタン群 -->
+    <div class="actions" style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+      {% if is_sysadmin %}
+        <!-- sysadmin 用: 既存のシステム側操作 -->
+        <a class="btn" href="{{ url_for('sys_tenant_edit', tid=tenant.id) }}">編集（Sys）</a>
+
+        <form method="post" action="{{ url_for('sys_tenant_delete', tid=tenant.id) }}" style="display:inline">
+          {% if get_csrf %}<input type="hidden" name="csrf_token" value="{{ get_csrf() }}">{% endif %}
+          <button class="btn sub" type="submit" onclick="return confirm('削除しますか？配下データは残ります。');">削除（Sys）</button>
+        </form>
+
+        <form method="post" action="{{ url_for('sys_tenant_purge', tid=tenant.id) }}" style="display:inline">
+          {% if get_csrf %}<input type="hidden" name="csrf_token" value="{{ get_csrf() }}">{% endif %}
+          <button class="btn sub" type="submit" onclick="return confirm('⚠ テナント配下を全削除します。実行しますか？');">パージ（Sys）</button>
+        </form>
+      {% else %}
+        <!-- tenant_admin 用: 自分のテナントを編集/削除 -->
+        <a class="btn" href="{{ url_for('tenant_me_edit') }}">編集</a>
+        <form method="post" action="{{ url_for('tenant_me_delete') }}" style="display:inline">
+          {% if get_csrf %}<input type="hidden" name="csrf_token" value="{{ get_csrf() }}">{% endif %}
+          <button class="btn sub" type="submit" onclick="return confirm('このテナントを削除します。配下データは残ります。よろしいですか？');">削除</button>
+        </form>
+      {% endif %}
+    </div>
+  {% else %}
+    <p>テナント情報を取得できませんでした。</p>
+  {% endif %}
+</div>
+
+<!-- あなたのアカウント -->
+<div class="card" style="margin-bottom:1rem;">
+  <h3>あなたのアカウント</h3>
+  {% if admin %}
+    <ul>
+      <li>ログインID: <code>{{ admin.login_id }}</code></li>
+      <li>氏名: {{ admin.name }}</li>
+      <li>状態: {{ "有効" if admin.active else "無効" }}</li>
+      <li>最終ログイン: {{ admin.last_login or "-" }}</li>
+    </ul>
+
+    <div class="actions" style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+      {% if is_sysadmin %}
+        <!-- sysadmin がテナント管理者を操作する -->
+        <form method="post" action="{{ url_for('sys_tenant_admins_update', tid=tenant.id) }}" style="display:inline">
+          {% if get_csrf %}<input type="hidden" name="csrf_token" value="{{ get_csrf() }}">{% endif %}
+          <input type="hidden" name="op" value="toggle">
+          <input type="hidden" name="id" value="{{ admin.id }}">
+          <button class="btn sub" type="submit">有効/無効</button>
+        </form>
+
+        <form method="post" action="{{ url_for('sys_tenant_admins_update', tid=tenant.id) }}" style="display:inline">
+          {% if get_csrf %}<input type="hidden" name="csrf_token" value="{{ get_csrf() }}">{% endif %}
+          <input type="hidden" name="op" value="resetpw">
+          <input type="hidden" name="id" value="{{ admin.id }}">
+          <input name="password" placeholder="新PW" required style="width:160px">
+          <button class="btn sub" type="submit">PW更新</button>
+        </form>
+
+        <form method="post" action="{{ url_for('sys_tenant_admins_update', tid=tenant.id) }}" style="display:inline">
+          {% if get_csrf %}<input type="hidden" name="csrf_token" value="{{ get_csrf() }}">{% endif %}
+          <input type="hidden" name="op" value="delete">
+          <input type="hidden" name="id" value="{{ admin.id }}">
+          <button class="btn sub" type="submit">削除</button>
+        </form>
+      {% else %}
+        <!-- tenant_admin: 自分のパスワード変更 -->
+        <form method="post" action="{{ url_for('tenant_me_resetpw') }}" style="display:inline">
+          {% if get_csrf %}<input type="hidden" name="csrf_token" value="{{ get_csrf() }}">{% endif %}
+          <input type="password" name="password" placeholder="新PW" required style="width:160px">
+          <button class="btn sub" type="submit">自分のPWを更新</button>
+        </form>
+      {% endif %}
+    </div>
+  {% else %}
+    <p>アカウント情報を取得できませんでした。</p>
+  {% endif %}
+</div>
+
+<!-- 配下の店舗 + 管理者 -->
+<div class="card" style="margin-bottom:1rem;">
+  <h3>配下の店舗と管理者</h3>
+
+  <!-- 店舗作成フォーム（tenant_admin 可） -->
+  <form method="post" action="{{ url_for('tenant_stores_new') }}" style="margin:12px 0">
+    {% if get_csrf %}<input type="hidden" name="csrf_token" value="{{ get_csrf() }}">{% endif %}
+    <div style="display:flex; gap:8px; flex-wrap:wrap">
+      <input name="code" placeholder="店舗コード" required style="min-width:160px">
+      <input name="name" placeholder="店舗名" required style="min-width:220px">
+      <button class="btn" type="submit">店舗を作成</button>
+    </div>
+  </form>
+
+  {% if stores_with_admins and stores_with_admins|length > 0 %}
+    <table class="table">
+      <thead>
+        <tr>
+          <th>ID</th><th>店舗コード</th><th>名称</th><th>有効</th>
+          <th>管理者</th><th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in stores_with_admins %}
+          {% set st = item.store %}
+          <tr>
+            <td>{{ st.id }}</td>
+            <td><code>{{ st.code }}</code></td>
+            <td>{{ st.name }}</td>
+            <td>{{ "有効" if st.active else "無効" }}</td>
+            <td>
+              {% if item.admins %}
+                <ul style="margin:0; padding-left:18px">
+                  {% for ad in item.admins %}
+                    <li>
+                      {{ ad.name }}（{{ ad.login_id }}）
+                      <form method="post" action="{{ url_for('tenant_store_admin_delete', sid=st.id, aid=ad.id) }}" style="display:inline">
+                        {% if get_csrf %}<input type="hidden" name="csrf_token" value="{{ get_csrf() }}">{% endif %}
+                        <button class="btn sub" type="submit" onclick="return confirm('管理者を削除しますか？');">削除</button>
+                      </form>
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <span class="small" style="color:#666">管理者なし</span>
+              {% endif %}
+
+              <!-- 管理者追加フォーム -->
+              <form method="post" action="{{ url_for('tenant_store_admin_new', sid=st.id) }}" style="margin-top:6px;">
+                {% if get_csrf %}<input type="hidden" name="csrf_token" value="{{ get_csrf() }}">{% endif %}
+                <input name="login_id" placeholder="ログインID" required style="width:120px">
+                <input name="name" placeholder="氏名" required style="width:100px">
+                <input type="password" name="password" placeholder="PW" required style="width:120px">
+                <button class="btn sub" type="submit">追加</button>
+              </form>
+            </td>
+            <td class="actions" style="white-space:nowrap;">
+              <a class="btn sub" href="{{ url_for('tenant_store_edit', sid=st.id) }}">編集</a>
+              <form method="post" action="{{ url_for('tenant_store_delete', sid=st.id) }}" style="display:inline">
+                {% if get_csrf %}<input type="hidden" name="csrf_token" value="{{ get_csrf() }}">{% endif %}
+                <button class="btn sub" type="submit" onclick="return confirm('店舗を削除しますか？');">削除</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>このテナントに紐づく店舗はありません。</p>
+  {% endif %}
+</div>
+
+<div class="actions" style="display:flex; gap:8px; flex-wrap:wrap;">
+  <a class="btn" href="{{ url_for('floor') }}">フロア</a>
+  <a class="btn sub" href="{{ url_for('kds') }}">KDS</a>
+  <a class="btn sub" href="{{ url_for('logout') }}">ログアウト</a>
+</div>
+{% endblock %}

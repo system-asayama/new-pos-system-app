@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>セッション終了</title>
+  <style>
+    :root{
+      --bg:#f5f5f5;
+      --card:#fff;
+      --border:#ddd;
+      --text-base:#333;
+      --primary:#2563eb;
+      --shadow-sm:0 1px 3px rgba(0,0,0,0.1);
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif;
+      background:var(--bg);
+      color:var(--text-base);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      min-height:100vh;
+      padding:20px;
+    }
+    .container{
+      max-width:500px;
+      width:100%;
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:32px;
+      box-shadow:var(--shadow-sm);
+      text-align:center;
+    }
+    .icon{
+      font-size:64px;
+      margin-bottom:16px;
+    }
+    h1{
+      font-size:24px;
+      margin:0 0 16px 0;
+      color:var(--text-base);
+    }
+    p{
+      font-size:16px;
+      line-height:1.6;
+      color:#666;
+      margin:0 0 24px 0;
+    }
+    .info{
+      background:#f0f9ff;
+      border:1px solid #bae6fd;
+      border-radius:8px;
+      padding:16px;
+      margin-bottom:24px;
+      text-align:left;
+    }
+    .info strong{
+      color:var(--primary);
+    }
+    .btn{
+      display:inline-block;
+      padding:12px 24px;
+      background:var(--primary);
+      color:#fff;
+      text-decoration:none;
+      border-radius:8px;
+      font-weight:500;
+      transition:opacity 0.2s;
+    }
+    .btn:hover{
+      opacity:0.9;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">🔒</div>
+    <h1>セッションが終了しました</h1>
+    <p>{{ message }}</p>
+    
+    {% if table_name %}
+    <div class="info">
+      <strong>テーブル:</strong> {{ table_name }}<br>
+      このテーブルで新しい注文を開始するには、テーブルのQRコードを再度スキャンしてください。
+    </div>
+    {% endif %}
+    
+    <p style="font-size:14px;color:#999;margin-top:32px">
+      ※ 会計が完了した注文は、セキュリティ上の理由により閲覧できません。
+    </p>
+  </div>
+</body>
+</html>
+

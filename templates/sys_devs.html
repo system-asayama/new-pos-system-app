@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>開発者 / SysAdmin 一覧</h2>
+
+<div class="card" style="margin-bottom:16px">
+  <table style="width:100%; border-collapse:collapse">
+    <thead>
+      <tr>
+        <th style="text-align:left;border-bottom:1px solid #e5e7eb;padding:6px 8px">ID</th>
+        <th style="text-align:left;border-bottom:1px solid #e5e7eb;padding:6px 8px">氏名</th>
+        <th style="text-align:left;border-bottom:1px solid #e5e7eb;padding:6px 8px">ログインID</th>
+        <th style="text-align:left;border-bottom:1px solid #e5e7eb;padding:6px 8px">役割</th>
+        <th style="text-align:left;border-bottom:1px solid #e5e7eb;padding:6px 8px">状態</th>
+        <th style="text-align:left;border-bottom:1px solid #e5e7eb;padding:6px 8px; width:160px">操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in rows %}
+      <tr>
+        <td style="padding:6px 8px">{{ u.id }}</td>
+        <td style="padding:6px 8px">{{ u.氏名 or u.name }}</td>
+        <td style="padding:6px 8px"><code>{{ u.ログインID or u.login_id }}</code></td>
+        <td style="padding:6px 8px"><code>{{ u.role }}</code></td>
+        <td style="padding:6px 8px">{{ '有効' if (u.active|default(1)) else '無効' }}</td>
+        <td style="padding:6px 8px">
+          <a class="btn small" href="{{ url_for('sys_dev_edit', did=u.id) }}">編集</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" style="padding:10px;color:#666">ユーザーがいません。</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if can_invite %}
+<div class="card">
+  <h3>開発者を招待 / 追加</h3>
+  <form method="post" action="{{ url_for('sys_devs_create') }}">
+    <input type="hidden" name="csrf_token" value="{{ get_csrf() }}">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <label style="flex:1 1 200px">氏名
+        <input type="text" name="name" required>
+      </label>
+      <label style="flex:1 1 200px">ログインID
+        <input type="text" name="login_id" required pattern="[A-Za-z0-9._-]{3,64}">
+      </label>
+      <label style="flex:1 1 200px">パスワード
+        <input type="password" name="password" minlength="8" required>
+      </label>
+      <label style="flex:1 1 160px">役割
+        <select name="role">
+          <option value="developer">developer</option>
+          <option value="lead">lead</option>
+          <option value="sysadmin">sysadmin</option>
+        </select>
+      </label>
+      <label style="flex:0 0 120px">有効
+        <select name="active">
+          <option value="1" selected>有効</option>
+          <option value="0">無効</option>
+        </select>
+      </label>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+      <button class="btn" type="submit">追加する</button>
+      <a class="btn secondary" href="{{ url_for('dev_tools') }}">開発者ツールへ戻る</a>
+    </div>
+  </form>
+</div>
+{% else %}
+<div class="card">
+  <p style="color:#666">あなたには招待権限がありません（lead / sysadmin のみ）。</p>
+  <a class="btn secondary" href="{{ url_for('dev_tools') }}">開発者ツールへ戻る</a>
+</div>
+{% endif %}
+
+{% endblock %}

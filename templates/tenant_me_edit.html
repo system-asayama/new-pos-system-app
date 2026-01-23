@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>テナント情報の編集</h2>
+<p class="small" style="color:#666">テナントの基本情報を編集します。</p>
+
+<form method="post" action="">
+  {% if session.csrf_token %}
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+  {% endif %}
+
+  <div class="card" style="max-width:680px">
+    <div class="row">
+      <label>名称</label>
+      <input name="名称" value="{{ t['名称'] if t else '' }}" required>
+    </div>
+
+    <div class="row">
+      <label>slug</label>
+      <input name="slug" value="{{ t['slug'] if t else '' }}" required>
+      <p class="small" style="color:#666">URL に使う英数字・ハイフンの識別子</p>
+    </div>
+
+    <div class="actions" style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
+      <button class="btn" type="submit">保存</button>
+      <!-- 戻る（履歴）は削除して固定の戻るだけ残す -->
+      <a class="btn sub" href="{{ back_url }}">戻る</a>
+    </div>
+  </div>
+</form>
+{% endblock %}

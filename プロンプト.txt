@@ -1,0 +1,126 @@
+# ローカルpostgre接続
+psql -U postgres -h 127.0.0.1 -d kintai_dev
+
+
+# 再起動
+heroku ps:restart -a shift-kintai-system-app
+
+
+# デプロイ
+git push heroku master
+
+
+# ログ
+heroku logs --tail --app shift-kintai-system-app
+
+
+
+# データベースに接続
+heroku pg:psql -a shift-kintai-system-app
+
+
+
+# デプロイ＆再起動（PowerShell）- 推奨版
+$APP = "shift-kintai-system-app"
+
+Write-Host "デプロイを開始..." -ForegroundColor Cyan
+
+try {
+    # 初期設定チェック
+    if (-not (Test-Path ".git")) {
+        git init
+        git config user.email "deploy@heroku.com"
+        git config user.name "Heroku Deploy"
+    }
+    
+    $remotes = git remote
+    if ($remotes -notcontains "heroku") {
+        heroku git:remote -a $APP
+    }
+    
+    # デプロイ実行
+    git add -A
+    git commit -m "deploy: latest changes"
+    git push heroku HEAD:main -f
+    
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "✓ デプロイ成功" -ForegroundColor Green
+        
+        heroku ps:restart -a $APP
+        Write-Host "✓ 再起動完了" -ForegroundColor Green
+        
+        Write-Host "`nログを表示中..." -ForegroundColor Yellow
+        heroku logs --tail -a $APP
+    } else {
+        throw "デプロイに失敗しました"
+    }
+} catch {
+    Write-Host "`nエラー: $_" -ForegroundColor Red
+    Write-Host "ログを確認: heroku logs --tail -a $APP" -ForegroundColor Yellow
+    exit 1
+}
+
+
+
+# プロファイラをON。cumtime（累積時間）順に上位30関数を表示
+heroku config:set ENABLE_PROFILING=1 PROFILER_RESTRICTIONS=30 PROFILER_SORT_BY=cumtime -a shift-kintai-system-app
+
+# 反映のため再起動
+heroku ps:restart -a shift-kintai-system-app
+
+
+
+# Profiler関連の設定をすべて削除
+heroku config:unset ENABLE_PROFILING PROFILER_DIR PROFILER_RESTRICTIONS PROFILER_SORT_BY -a shift-kintai-system-app
+
+# 反映のため再起動
+heroku ps:restart -a shift-kintai-system-app
+
+
+
+
+
+
+python app.py
+
+
+こちらの添付のapp.pyの該当箇所にあなたが提示する修正および加筆をしてして動くように書き換えたものをapp.pyデータでもらえますか？？
+
+
+修正後の完全なapp.pyをデータで下さい。
+
+
+全体を修正した最新版app.pyを適宜分割して提供してください。完全なものなので一切の省略はしないで下さい。
+また、修正前の現状の全体の行数が何行で何文字あるかを分析して提示してください。
+その後、新しく提示予定のコードの総行数が何行位で文字数が何文字くらいになるかも提示してください。
+新しく提示する修正後の最新のコードの行数または文字数が修正前のコードの総行数または文字数に満たない場合は、なぜ満たないのかきちんと説明すること。
+分割出力が終わる都度、次のを出力するか指示を求めてください。
+
+
+全体を修正した最新版HTMLを適宜分割して提供してください。完全なものなので一切の省略はしないで下さい。
+また、修正前の現状の全体の行数が何行で何文字あるかを分析して提示してください。
+その後、新しく提示予定のコードの総行数が何行位で文字数が何文字くらいになるかも提示してください。
+新しく提示する修正後の最新のコードの行数または文字数が修正前のコードの総行数または文字数に満たない場合は、なぜ満たないのかきちんと説明すること。
+分割出力が終わる都度、次のを出力するか指示を求めてください。
+
+                                                           
+
+管理者はすべての閲覧及び編集が可能で、管理者以外は自分のIDに紐付く情報の閲覧のみ可能になるように修正して下さい。
+
+
+T_管理者のroleカラムがowner,accountant,adminのいずれかであれば管理者です。T_従業員は管理者の判定に使いません。また、従業員かつ管理者の場合、同じアドレスでT_従業員とT_管理者に登録されます。
+
+
+管理者以外がこのページに入ろうとするとhttp://localhost:5000/admin_loginに飛ぶようにして下さい。
+ログインしたら遷移予定だったページに飛ぶようにして下さい。
+
+
+
+例えば入社日が2020年8月1日の従業員が基準日を2025年6月30日として1年加算金額を40円で登録していた場合2025年6月30日時点での1年間適用金額と2025年7月31日時点での1年加算適用金額と2025年8月末時点での1年加算適用金額を教えて下さい。累計勤務時間は考慮しないで下さい。
+
+
+アプリの管理権限に関する構成を以下のようにしたいです。最高位がシステム管理者で、このアプリ全体を管理する権限も持った者、次がテナント管理者（会社そのものの責任者）で、次が店舗管理者（店長クラス）、そして従業員。　これは最初にいいました。これをきちんと反映して全体を修正した完全なapp.pyは何行くらいありますか？？
+
+
+テーブル移動が出来るようにして下さい。テーブル移動後は元テーブルのお客様詳細がリセットされるようにして下さい。なお、テーブル移動について、移動後の席に他のお客さんがいる場合には、移動出来ない、移動可能で人数を合算する、テーブルを交換するの3つが選べれるようにし、3つめの場合はお客様状態が交換されるようにして下さい。もちろん、交換の場合には注文したメニューなども入れ替えです。
+

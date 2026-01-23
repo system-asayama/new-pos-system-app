@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title or APP_TITLE or "Simple POS" }}</title>
+  <style>
+    :root{
+      --bg:#f7f8fb; --card:#fff; --text:#1f2937; --muted:#6b7280; --danger:#dc2626;
+      --primary:#2563eb; --sub:#eef2f7; --border:#e5e7eb;
+    }
+    *{box-sizing:border-box}
+    body{margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; color:var(--text); background:var(--bg);}
+    header{background:#fff; border-bottom:1px solid var(--border); padding:10px 16px; display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap;}
+    header .left{display:flex; gap:12px; align-items:center; flex-wrap:wrap;}
+    header .right{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+    header a{color:var(--text); text-decoration:none;}
+    main{max-width:1100px; margin:24px auto; padding:0 16px;}
+    h1{font-size:18px; margin:0;}
+    h2{font-size:20px; margin:0 0 12px;}
+    .grid{display:grid; gap:16px; grid-template-columns:1fr;}
+    @media(min-width:900px){ .grid{grid-template-columns:1fr 1fr;} }
+    .card{background:var(--card); border:1px solid var(--border); border-radius:10px; padding:16px;}
+    label{display:block; font-size:14px; color:var(--muted); margin:10px 0 6px;}
+    input, textarea, select{ width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:#fff; font-size:16px; }
+    textarea{min-height:96px; resize:vertical;}  /* ← min_height を min-height に修正 */
+    .btn{display:inline-block; padding:10px 14px; background:var(--primary); color:#fff; border:none; border-radius:8px; font-size:14px; cursor:pointer; text-decoration:none; text-align:center;}
+    .btn.sub{background:var(--sub); color:var(--text); border:1px solid var(--border);}
+    .btn.sales{background:#10b981; color:#fff;}
+    .btn.sales:hover{background:#059669;}
+    .small{font-size:12px;}
+    .thumbbox{width:96px; height:96px; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:#fff}
+    .thumb{width:100%; height:100%; object-fit:cover}
+    table{width:100%; border-collapse:collapse;}
+    th, td{border-bottom:1px solid var(--border); padding:8px 10px; text-align:left; vertical-align:top;}
+    .badge{display:inline-block; padding:4px 8px; background:#eef2ff; border:1px solid #e0e7ff; border-radius:999px; font-size:12px;}
+    .price{background:#ecfeff; border-color:#cffafe;}
+    .actions{display:flex; gap:8px; flex-wrap:wrap;}
+    .flash{background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; padding:10px 12px; border-radius:8px; margin-bottom:12px;}
+    .nav{display:flex; gap:8px; flex-wrap:wrap;}
+  </style>
+  {% block head_extra %}{% endblock %}
+</head>
+<body>
+  <header>
+    <div class="left">
+      <a href="{{ url_for('index') }}"><strong>{{ APP_TITLE or "Simple POS" }}</strong></a>
+
+      {# 役割別ナビ（ログイン済み） #}
+      {% if session.get('logged_in') %}
+        {% set _role = session.get('role') %}
+        <nav class="nav">
+          {# --- システム管理者 --- #}
+          {% if _role == 'sysadmin' %}
+            <a class="btn sub" href="{{ url_for('dev_tools') }}">開発者ツール</a>
+            <a class="btn sub" href="{{ url_for('sys_tenants') }}">テナント一覧</a>
+
+          {# --- テナント管理者 --- #}
+          {% elif _role == 'tenant_admin' %}
+            <a class="btn sub" href="{{ url_for('tenant_portal') }}">テナントポータル</a>
+            <a class="btn sub" href="{{ url_for('floor') }}">フロア</a>
+            <a class="btn sub" href="{{ url_for('kds') }}">KDS</a>
+            <a class="btn sales" href="{{ url_for('sales_report') }}">📊 売上集計</a>
+
+          {# --- 店舗管理者（旧 admin） --- #}
+          {% elif _role == 'store_admin' %}
+            {# エンドポイント存在チェック（BuildError回避） #}
+            {% set _has_console = has_endpoint('admin_console') %}
+            {% set _has_mypage  = has_endpoint('admin_mypage') %}
+
+            {% if _has_console %}
+              <a class="btn sub" href="{{ url_for('admin_console') }}">店舗管理ページ</a>
+            {% endif %}
+            {% if _has_mypage %}
+              <a class="btn sub" href="{{ url_for('admin_mypage') }}">管理者マイページ</a>
+            {% endif %}
+
+            <a class="btn sub" href="{{ url_for('floor') }}">フロア</a>
+            <a class="btn sub" href="{{ url_for('kds') }}">KDS</a>
+            <a class="btn sub" href="{{ url_for('staff_floor') }}">スタッフ画面</a>
+            <a class="btn sales" href="{{ url_for('sales_report') }}">📊 売上集計</a>
+
+          {# --- 従業員 --- #}
+          {% else %}
+            <a class="btn sub" href="{{ url_for('staff_mypage') }}">従業員マイページ</a>
+            <a class="btn sub" href="{{ url_for('staff_floor') }}">スタッフフロア</a>
+            <a class="btn sub" href="{{ url_for('floor') }}">フロア</a>
+          {% endif %}
+        </nav>
+      {% else %}
+        {# 未ログイン時の簡易ナビ（QRユーザーの場合は非表示） #}
+        {% if not is_qr_user %}
+        <nav class="nav">
+          <a class="btn sub" href="{{ url_for('login_choice') }}">ログイン選択</a>
+          <a class="btn sub" href="{{ url_for('sysadmin_login') }}">システム管理者ログイン</a>
+          {# ▼ ここを前室に変更 ▼ #}
+          <a class="btn sub" href="{{ url_for('tenant_admin_login_entry') }}">テナント管理者ログイン</a>
+          <a class="btn sub" href="{{ url_for('admin_login') }}">店舗管理者ログイン</a>
+          <a class="btn sub" href="{{ url_for('staff_login') }}">従業員ログイン</a>
+        </nav>
+        {% endif %}
+      {% endif %}
+    </div>
+
+    <div class="right small">
+      {% if session.get('logged_in') %}
+        {% set _role = session.get('role') %}
+        {% set role_label = {
+          'sysadmin': 'システム管理者',
+          'tenant_admin': 'テナント管理者',
+          'store_admin': '店舗管理者',
+          'staff': '従業員'
+        }.get(_role, '従業員') %}
+        <span>
+          {% if _role not in ['sysadmin','tenant_admin'] and session.get('store_name') %}
+            店舗: <strong>{{ session.get('store_name') }}</strong> ／
+          {% endif %}
+          ユーザー: <strong>{{ session.get('user_name') }}</strong>
+          （{{ role_label }}）
+        </span>
+        <a class="btn sub" href="{{ url_for('logout') }}">ログアウト</a>
+      {% else %}
+        {% if not is_qr_user %}
+        <a class="btn sub" href="{{ url_for('login_choice') }}">ログイン</a>
+        {% endif %}
+      {% endif %}
+    </div>
+  </header>
+
+  <main>
+    {% with msgs = get_flashed_messages() %}
+      {% if msgs %}
+        <div class="flash">
+          {% for m in msgs %}<div>{{ m }}</div>{% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  {% block scripts_extra %}{% endblock %}
+
+  <!-- ▼ 通知サウンド（共通）：KDSや他画面から window.playNotify() を呼ぶだけで鳴る ▼ -->
+  <audio id="notify-audio"
+         src="{{ url_for('static', filename='sounds/order_notify.wav') }}"
+         preload="auto"
+         style="display:none"></audio>
+
+  <button id="unlock-audio-global"
+          type="button"
+          style="position:fixed;right:12px;bottom:12px;z-index:9999;">
+    🔊 通知を有効化
+  </button>
+
+  <script>
+  (() => {
+    const audioEl = document.getElementById('notify-audio');
+    const unlockBtn = document.getElementById('unlock-audio-global');
+    let unlocked = false;
+
+    function hideUnlock(){ if (unlockBtn) unlockBtn.style.display = 'none'; }
+    function showUnlock(){ if (unlockBtn) unlockBtn.style.display = ''; }
+
+    async function unlockOnce(){
+      try{
+        await audioEl.play();   // 再生できる権限を確保
+        audioEl.pause();
+        audioEl.currentTime = 0;
+        unlocked = true;
+        hideUnlock();
+      }catch(e){
+        unlocked = false;
+        showUnlock();
+      }
+    }
+
+    // 初回のタップ/クリックで自動解錠
+    const firstGesture = () => { unlockOnce(); window.removeEventListener('pointerdown', firstGesture); };
+    window.addEventListener('pointerdown', firstGesture);
+
+    // 明示ボタンでも解錠
+    if (unlockBtn) unlockBtn.addEventListener('click', unlockOnce);
+
+    // グローバル関数：どこからでも呼べる
+    window.playNotify = async function(){
+      if (!audioEl) return;
+      if (!unlocked){
+        try { await unlockOnce(); } catch(_){}
+        if (!unlocked) return; // まだ解錠できていなければ何もしない
+      }
+      try{
+        audioEl.currentTime = 0;   // 先頭欠け防止
+        await audioEl.play();
+      }catch(err){
+        showUnlock();
+        console.warn('playNotify failed:', err);
+      }
+    };
+  })();
+  </script>
+  <!-- ▲ 通知サウンドここまで ▲ -->
+</body>
+</html>

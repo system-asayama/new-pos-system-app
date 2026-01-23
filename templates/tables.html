@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>テーブル管理</h2>
+
+<div class="grid">
+  <div class="card">
+    <h3>新規テーブル</h3>
+    <form method="post" action="{{ url_for('admin_tables_new') }}">
+      <label>テーブル番号</label><input name="テーブル番号" required>
+      <button class="btn" type="submit">追加</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>一覧</h3>
+    <table>
+      <thead><tr><th>#</th><th>番号</th><th>状態</th><th>操作</th></tr></thead>
+      <tbody>
+        {% for t in tables %}
+        <tr>
+          <td>{{ t['id'] }}</td>
+          <td>{{ t['テーブル番号'] }}</td>
+          <td>{{ t['状態'] }}</td>
+          <td>
+            <a class="btn sub" href="{{ url_for('table_detail', table_id=t['id']) }}">詳細</a>
+            <form style="display:inline" method="post" action="{{ url_for('admin_tables_delete', table_id=t['id']) }}" onsubmit="return confirm('削除しますか？')">
+              <button class="btn sub" type="submit">削除</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

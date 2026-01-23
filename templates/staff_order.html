@@ -1,0 +1,685 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>スタッフ：注文入力（テーブル {{ table.no }})</h2>
+<div class="small" style="color:var(--muted);margin-bottom:8px">
+  担当: {{ staff_name }} /
+  <a class="btn sub" href="{{ url_for('staff_floor') }}">テーブル一覧へ戻る</a>
+</div>
+
+<style>
+  .cat-bar{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+  .pill{
+    display:inline-flex; align-items:center; padding:6px 12px;
+    border:1px solid var(--border); border-radius:9999px; cursor:pointer;
+    background:#f9fafb; color:var(--text-base); font-size:14px;
+  }
+  .pill:hover{ border-color:var(--primary); color:var(--primary); background:#eff6ff; }
+  .pill.active{ background:var(--primary); color:#fff; border-color:var(--primary); }
+
+  .menu-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap:16px; }
+  .menu-card{ padding:16px; border:1px solid var(--border); border-radius:12px; background:#fff; transition:.2s; }
+  .menu-card:hover{ box-shadow:0 4px 12px rgba(0,0,0,.06); transform:translateY(-2px); }
+  .thumbbox{ width:100%; height:150px; border:1px solid var(--border); border-radius:8px;
+             background:#eef2f7; display:flex; align-items:center; justify-content:center;
+             color:#9aa3af; font-size:12px; overflow:hidden; }
+  .menu-card img{ width:100%; height:150px; object-fit:cover; border-radius:8px; border:1px solid var(--border); }
+  .title{ margin-top:6px; font-weight:600; }
+  .price-muted{ color:var(--muted); font-size:14px; margin-top:2px; }
+  .price-main{ color:var(--primary); font-weight:700; }
+  .controls{ display:flex; gap:8px; margin-top:10px; align-items:center; }
+  .qty-input{ width:80px; height:36px; border:1px solid var(--border); border-radius:8px; padding:0 8px; }
+  .loading{ text-align:center; color:var(--muted); padding:24px 0; }
+
+  .search-bar{ display:flex; gap:8px; align-items:center; margin:12px 0 4px; }
+  .search-input{ flex:1; height:36px; border:1px solid var(--border); border-radius:8px; padding:0 10px; }
+
+  /* お客様詳細 */
+  .cust-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .cust-field{ display:flex; flex-direction:column; gap:4px; }
+  .cust-input{ height:36px; border:1px solid var(--border); border-radius:8px; padding:0 8px; }
+  .ok-badge{ display:inline-block; background:#10b981; color:#fff; border-radius:9999px; font-size:12px; padding:3px 10px; margin-left:8px; }
+  .warn{ color:#b45309 }
+
+  /* カゴ / 明細 */
+  #cart-table,#detail-table{ width:100%; border-collapse:collapse }
+  #cart-table th,#cart-table td,#detail-table th,#detail-table td{ border-bottom:1px solid var(--border); padding:8px }
+  .totals{ margin-top:10px }
+  .totals div{ display:flex; justify-content:space-between; margin-top:4px }
+  .totals strong{ font-size:16px }
+  .text-right{ text-align:right }
+  .small{ font-size:12px }
+  .muted-row{ color:#6b7280 }
+</style>
+
+<div class="grid" style="grid-template-columns: 2fr 1fr; gap:16px">
+  <div class="card">
+    <h3>カテゴリ</h3>
+    <div id="cat-bar" class="cat-bar">
+      <span class="pill active" data-cid="0">すべて</span>
+      {% for c in cats %}
+        <span class="pill" data-cid="{{ c.id }}">{{ c.name }}</span>
+      {% endfor %}
+    </div>
+
+    <!-- 検索バー（同一仕様） -->
+    <div class="search-bar">
+      <input id="menu-q" class="search-input" placeholder="メニュー名・説明で検索">
+      <button id="menu-search" class="btn sub" type="button">検索</button>
+      <button id="menu-clear"  class="btn sub" type="button">クリア</button>
+    </div>
+
+    <h3 style="margin:8px 0 12px">メニュー</h3>
+    <div id="menu-grid" class="menu-grid"></div>
+  </div>
+
+  <div class="card">
+    <!-- お客様詳細 -->
+    <h3 style="display:flex;align-items:center;gap:8px;justify-content:space-between">
+      <span>お客様詳細</span>
+      <span>
+        <span id="cust-ok" class="ok-badge" style="display:none">登録済</span>
+        <button id="cust-edit" class="btn sub" type="button" style="display:none">編集する</button>
+      </span>
+    </h3>
+    <div class="small" style="color:var(--muted);margin:4px 0 10px">※ 男子・女子は<strong>小学生以下</strong></div>
+    <div class="cust-grid">
+      <div class="cust-field"><label>男性（大人）</label><input id="cust-men"   class="cust-input" type="number" min="0" step="1" value="0" inputmode="numeric"></div>
+      <div class="cust-field"><label>女性（大人）</label><input id="cust-women" class="cust-input" type="number" min="0" step="1" value="0" inputmode="numeric"></div>
+      <div class="cust-field"><label>男子（小学生以下）</label><input id="cust-boys"  class="cust-input" type="number" min="0" step="1" value="0" inputmode="numeric"></div>
+      <div class="cust-field"><label>女子（小学生以下）</label><input id="cust-girls" class="cust-input" type="number" min="0" step="1" value="0" inputmode="numeric"></div>
+    </div>
+    <button id="cust-submit" class="btn" style="margin-top:10px">お客様詳細を送信</button>
+    <div id="cust-msg" class="small warn" style="margin-top:6px"></div>
+
+    <hr style="margin:14px 0">
+
+    <h3>注文カゴ</h3>
+    <table id="cart-table">
+      <thead><tr><th>品目</th><th style="width:90px">数量</th><th style="width:160px">単価</th><th style="width:90px">操作</th></tr></thead>
+      <tbody id="cart-body">
+        <tr id="empty-row"><td colspan="4" class="small" style="color:var(--muted)">まだありません</td></tr>
+      </tbody>
+    </table>
+
+    <div class="totals">
+      <div><span>合計（税抜）</span><strong id="subtotal-excl">¥0</strong></div>
+      <div><span>合計（税込）</span><strong id="total-incl">¥0</strong></div>
+    </div>
+
+    <div style="margin-top:10px">
+      <label>メモ（全体に対する注意など）</label>
+      <input id="memo-global" placeholder="任意" style="width:100%;height:36px;border:1px solid var(--border);border-radius:8px;padding:0 8px">
+    </div>
+    <button class="btn" style="margin-top:10px" onclick="submitOrder()">この内容で送信</button>
+
+    <hr>
+    <h3>進行中の注文</h3>
+    <div id="order-details-container"></div>
+  </div>
+</div>
+
+<script>
+const tableId = {{ table.id }};
+let   orderId = {{ order.id if order else 'null' }};
+
+/* ========================= お客様詳細：状態管理 ========================= */
+let customerDetailOK = false;
+let customerDetailId = null;
+
+const okBadge  = document.getElementById('cust-ok');
+const btnEdit  = document.getElementById('cust-edit');
+const btnSend  = document.getElementById('cust-submit');
+const msgCust  = document.getElementById('cust-msg');
+const inMen    = document.getElementById('cust-men');
+const inWomen  = document.getElementById('cust-women');
+const inBoys   = document.getElementById('cust-boys');
+const inGirls  = document.getElementById('cust-girls');
+
+function setCustLocked(locked){
+  [inMen,inWomen,inBoys,inGirls].forEach(el => el.disabled = locked);
+  okBadge.style.display = (locked && customerDetailOK) ? 'inline-block' : 'none';
+  btnEdit.style.display = (locked && customerDetailOK) ? 'inline-flex'  : 'none';
+  btnSend.textContent   = locked ? 'お客様詳細を送信' : (customerDetailOK ? '変更を保存' : 'お客様詳細を送信');
+}
+
+async function fetchCustStatus(){
+  const params = new URLSearchParams();
+  if (orderId != null) params.set('order_id', String(orderId));
+  params.set('table_id', String(tableId));
+  try{
+    const res = await fetch('/api/customer_detail/status?' + params.toString(), {headers:{'Accept':'application/json'}});
+    const j = await res.json();
+    if (!res.ok || !j.ok) return;
+
+    if (j.exists){
+      customerDetailOK = true;
+      customerDetailId = j.detail?.id ?? null;
+      if (j.detail){
+        inMen.value   = j.detail.大人男性 ?? 0;
+        inWomen.value = j.detail.大人女性 ?? 0;
+        inBoys.value  = j.detail.子ども男 ?? 0;
+        inGirls.value = j.detail.子ども女 ?? 0;
+      }
+      msgCust.textContent = 'お客様詳細は登録済みです。編集する場合は「編集する」を押してください。';
+      setCustLocked(true);
+    }else{
+      customerDetailOK = false;
+      customerDetailId = null;
+      msgCust.textContent = '※ お客様詳細の登録が完了するまで注文は送信できません。';
+      setCustLocked(false);
+    }
+  }catch(e){ console.error('status failed:', e); }
+}
+btnEdit.addEventListener('click', () => { setCustLocked(false); msgCust.textContent = '人数を編集して「変更を保存」を押してください。'; });
+btnSend.addEventListener('click', async () => {
+  const men   = Math.max(0, parseInt(inMen.value   || '0', 10) || 0);
+  const women = Math.max(0, parseInt(inWomen.value || '0', 10) || 0);
+  const boys  = Math.max(0, parseInt(inBoys.value  || '0', 10) || 0);
+  const girls = Math.max(0, parseInt(inGirls.value || '0', 10) || 0);
+
+  const payload = { men, women, boys, girls, table_id: tableId };
+  if (orderId != null) payload.order_id = orderId;
+  const method = customerDetailOK ? 'PUT' : 'POST';
+
+  try{
+    const res = await fetch('/api/customer_detail', { method, headers: {'Content-Type':'application/json','Accept':'application/json'}, body: JSON.stringify(payload) });
+    const j = await res.json();
+    if (!res.ok || !j.ok){ msgCust.textContent = 'お客様詳細の' + (method==='POST'?'送信':'更新') + 'に失敗しました: ' + (j.error || res.status); return; }
+    customerDetailOK = true; customerDetailId = j.id ?? customerDetailId;
+    setCustLocked(true);
+    msgCust.textContent = (method==='POST') ? 'お客様詳細を登録しました。' : 'お客様詳細を更新しました。';
+  }catch(e){ msgCust.textContent = '通信エラー: ' + e; }
+});
+
+/* ========================= 共通ユーティリティ ========================= */
+function priceFmt(v){ const n=Number(v); return Number.isFinite(n)? n.toLocaleString('ja-JP'): v; }
+function toRate(val){ const n=Number(val); if(!Number.isFinite(n))return .10; if(n<0)return 0; if(n>1)return Math.min(n/100,1); return n; }
+function inclFromExcl(excl, rate){ return excl + Math.floor(excl*rate + 1e-9); }
+function exclFromIncl(incl, rate){ let e=Math.floor(incl/(1+rate)+1e-9),i2=inclFromExcl(e,rate); while(i2<incl){e++;i2=inclFromExcl(e,rate);} while(i2>incl&&e>0){e--;i2=inclFromExcl(e,rate);} return e; }
+function computePrices(m){
+  const rate=toRate(m.rate);
+  let excl=Number(m.price_excl), incl=Number(m.price_incl);
+  if(!Number.isFinite(excl)||excl<=0){
+    if(Number.isFinite(incl)&&incl>0) excl=exclFromIncl(incl,rate);
+    else if(Number.isFinite(Number(m.price))&&Number(m.price)>0){ incl=Number(m.price); excl=exclFromIncl(incl,rate); }
+    else excl=0;
+  }
+  if(!Number.isFinite(incl)||incl<=0) incl=inclFromExcl(excl,rate);
+  return {rate,excl,incl};
+}
+
+/* ========================= 並び順（カテゴリ順→カテゴリ内順） ========================= */
+// menu_id → display_order（カテゴリ内）のマップを出来るだけ取りに行く
+function buildOrderMapFromPayload(payload){
+  const map = new Map();
+  if (payload && typeof payload.link_orders === 'object' && payload.link_orders){
+    for (const [k,v] of Object.entries(payload.link_orders)){
+      const id=Number(k), n=Number(v);
+      if (Number.isFinite(id) && Number.isFinite(n)) map.set(id,n);
+    }
+  }
+  if (Array.isArray(payload?.links)){
+    for (const ln of payload.links){
+      const id = Number(ln.menu_id ?? ln.product_id ?? ln.menuId ?? ln.productId);
+      const n  = Number(ln.display_order ?? ln.displayOrder ?? ln.order ?? ln.sort ?? ln.rank);
+      if (Number.isFinite(id) && Number.isFinite(n)) map.set(id,n);
+    }
+  }
+  return map;
+}
+function pickInlineCatOrder(menu){
+  const ks = [
+    'link_display_order','cat_order','display_order_in_cat',
+    'category_order','categoryDisplayOrder','pcl_display_order','pclOrder',
+    'category_sort','catSort'
+  ];
+  for (const k of ks){ const n=Number(menu?.[k]); if(Number.isFinite(n)) return n; }
+  return null;
+}
+async function fetchOrderMapIfNeeded(categoryId, payload){
+  const fromPayload = buildOrderMapFromPayload(payload);
+  if (fromPayload.size) return fromPayload;
+  if (Array.isArray(payload?.menus) && payload.menus.some(m => pickInlineCatOrder(m) != null)){
+    return new Map(); // inline を利用
+  }
+  try{
+    const a = await fetch(`/api/categories/${categoryId}/link_orders`, {headers:{'Accept':'application/json'}});
+    if (a.ok){ const j = await a.json(); const m = buildOrderMapFromPayload(j); if (m.size) return m; }
+  }catch{}
+  try{
+    const b = await fetch(`/api/categories/${categoryId}/links`, {headers:{'Accept':'application/json'}});
+    if (b.ok){ const j = await b.json(); const m = buildOrderMapFromPayload(j); if (m.size) return m; }
+  }catch{}
+  return new Map();
+}
+function compareInCategory(a, b, orderMap, ia=Infinity, ib=Infinity){
+  const oa = (pickInlineCatOrder(a) ?? Number(orderMap.get?.(a.id)) ?? ia);
+  const ob = (pickInlineCatOrder(b) ?? Number(orderMap.get?.(b.id)) ?? ib);
+  if (oa !== ob) return oa - ob;
+  const ga = Number(a.display_order ?? a.displayOrder ?? a.表示順 ?? Infinity);
+  const gb = Number(b.display_order ?? b.displayOrder ?? b.表示順 ?? Infinity);
+  if (ga !== gb) return ga - gb;
+  const an = (a.name ?? a.名称 ?? '').localeCompare((b.name ?? b.名称 ?? ''), 'ja'); if (an) return an;
+  return Number(a.id) - Number(b.id);
+}
+function getCategoryIdsInBarOrder(){
+  const out = [];
+  document.querySelectorAll('#cat-bar .pill').forEach(p=>{ const cid = p.dataset.cid; if (cid && cid !== '0') out.push(Number(cid)); });
+  return out;
+}
+
+/* ========================= メニュー取得・描画 ========================= */
+const __menuMap = new Map();
+
+function renderMenus(menus){
+  const grid = document.getElementById('menu-grid');
+  __menuMap.clear();
+  grid.innerHTML = '';
+
+  // ★ 提供中のみ描画（保険）
+  menus = (menus || []).filter(m => Number(m.available || 0) === 1);
+
+  if (!menus || menus.length === 0){ grid.innerHTML = '<div class="loading">メニューがありません。</div>'; return; }
+
+  menus.forEach(m => {
+    __menuMap.set(m.id, m);
+    const card = document.createElement('div');
+    card.className = 'menu-card';
+    const image = m.photo_url
+      ? `<img src="${m.photo_url}" alt="${m.name}" onerror="this.onerror=null;this.replaceWith(Object.assign(document.createElement('div'),{className:'thumbbox',textContent:'NO IMAGE'}));">`
+      : `<div class="thumbbox">NO IMAGE</div>`;
+    const { excl, incl } = computePrices(m);
+    card.innerHTML = `
+      ${image}
+      <div class="title">${m.name}</div>
+      <div class="price-muted">¥<span class="price-main">${priceFmt(incl)}</span>（税込）</div>
+      <div class="price-muted">税抜 ¥${priceFmt(excl)}</div>
+      <div class="controls">
+        <input class="qty-input" type="number" min="1" step="1" value="1" id="qty-${m.id}">
+        <button class="btn sub" data-role="add" data-id="${m.id}">追加</button>
+      </div>`;
+    grid.appendChild(card);
+  });
+}
+// 追加ボタン（デリゲーション）
+document.getElementById('menu-grid').addEventListener('click', (e)=>{
+  const btn = e.target.closest('[data-role="add"]'); if(!btn) return;
+  addItemById(Number(btn.dataset.id));
+});
+
+async function loadMenus(cid){
+  const grid = document.getElementById('menu-grid');
+  grid.innerHTML = '<div class="loading">読み込み中...</div>';
+
+  // すべて＝カテゴリバー順 → 各カテゴリ内 order
+  if (String(cid) === '0'){ return loadAllMenusByCategoryOrderStaff(); }
+
+  try{
+    const url  = '{{ url_for("api_menus_by_category", category_id=0) }}'.replace(/0$/, String(cid));
+    const resp = await fetch(url, {headers:{'Accept':'application/json'}});
+    const data = await resp.json();
+
+    const orderMap = await fetchOrderMapIfNeeded(Number(cid), data);
+    const sorted = (Array.isArray(data?.menus) ? data.menus : [])
+      .filter(m => Number(m.available || 0) === 1) // ★ 提供中のみ
+      .map((m,i)=>({m,i}))
+      .sort((A,B)=>compareInCategory(A.m, B.m, orderMap, A.i, B.i))
+      .map(x=>x.m);
+
+    renderMenus(sorted);
+  }catch(e){
+    console.error(e);
+    grid.innerHTML = '<div class="loading">通信エラーが発生しました。</div>';
+  }
+}
+
+async function loadAllMenusByCategoryOrderStaff(){
+  const grid = document.getElementById('menu-grid');
+  grid.innerHTML = '<div class="loading">読み込み中...</div>';
+
+  const catIds = getCategoryIdsInBarOrder();
+  const seen   = new Set();
+  const merged = [];
+
+  for (const cid of catIds){
+    try{
+      const url  = '{{ url_for("api_menus_by_category", category_id=0) }}'.replace(/0$/, String(cid));
+      const resp = await fetch(url, {headers:{'Accept':'application/json'}});
+      const data = await resp.json();
+
+      const orderMap = await fetchOrderMapIfNeeded(Number(cid), data);
+      const arr = (Array.isArray(data?.menus) ? data.menus : [])
+        .filter(m => Number(m.available || 0) === 1) // ★ 提供中のみ
+        .map((m,i)=>({m,i}))
+        .sort((A,B)=>compareInCategory(A.m, B.m, orderMap, A.i, B.i))
+        .map(x=>x.m);
+
+      for (const m of arr){
+        if (seen.has(m.id)) continue;
+        seen.add(m.id);
+        merged.push(m);
+      }
+    }catch(e){ console.warn('load category failed', cid, e); }
+  }
+
+  if (!merged.length){ grid.innerHTML = '<div class="loading">メニューがありません。</div>'; }
+  else { renderMenus(merged); }
+}
+
+/* ========================= 検索 ========================= */
+const inputQ=document.getElementById('menu-q');
+document.getElementById('menu-search').addEventListener('click', doSearch);
+document.getElementById('menu-clear').addEventListener('click', ()=>{
+  inputQ.value=''; const active=document.querySelector('#cat-bar .pill.active'); const cid=active?active.dataset.cid:'0'; loadMenus(cid);
+});
+inputQ.addEventListener('keydown',(e)=>{ if(e.key==='Enter') doSearch(); });
+
+function kanaFold(s){
+  if(!s) return '';
+  let t = s.normalize('NFKC').toLowerCase(); let out = '';
+  for (const ch of t){
+    const code = ch.charCodeAt(0);
+    if (code >= 0x3041 && code <= 0x3096){ out += String.fromCharCode(code + 0x60); }
+    else if (code === 0x309D){ out += String.fromCharCode(0x30FD); }
+    else if (code === 0x309E){ out += String.fromCharCode(0x30FE); }
+    else { out += ch; }
+  }
+  return out.replace(/\s+/g,'');
+}
+async function doSearch(){
+  const q=(inputQ.value||'').trim();
+  if(!q){ const active=document.querySelector('#cat-bar .pill.active'); const cid=active?active.dataset.cid:'0'; return loadMenus(cid); }
+  const grid = document.getElementById('menu-grid'); grid.innerHTML='<div class="loading">検索中...</div>';
+  try{
+    const resp = await fetch('{{ url_for("api_menus_by_category", category_id=0) }}', {headers:{'Accept':'application/json'}});
+    const j = await resp.json();
+    const kw=kanaFold(q);
+    const filtered=(j.menus||[])
+      .filter(m => Number(m.available || 0) === 1) // ★ 提供中のみ
+      .filter(m=>{
+        const nameF=kanaFold(m.name||''); const descF=kanaFold(m.description||'');
+        return nameF.includes(kw)||descF.includes(kw);
+      });
+    renderMenus(filtered);
+  }catch(e){ grid.innerHTML='<div class="loading">検索に失敗しました。</div>'; }
+}
+
+/* ========================= カート ========================= */
+const cart = [];
+function ensureNotEmptyRow(){ document.getElementById('empty-row')?.remove(); }
+function renderCart(){
+  const body = document.getElementById('cart-body');
+  body.innerHTML = '';
+  if (cart.length === 0){
+    const tr = document.createElement('tr');
+    tr.id = 'empty-row';
+    tr.innerHTML = '<td colspan="4" class="small" style="color:var(--muted)">まだありません</td>';
+    body.appendChild(tr);
+    updateTotals();
+    return;
+  }
+  for (let i=0;i<cart.length;i++){
+    const it = cart[i];
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${it.name}</td>
+      <td><input class="qty-input" type="number" min="1" step="1" value="${it.qty}" onchange="changeQty(${i}, this.value)"></td>
+      <td><div>税込 ¥${priceFmt(it.price_incl)}</div><div class="small muted">税抜 ¥${priceFmt(it.price_excl)}</div></td>
+      <td><button class="btn sub" onclick="removeItem(${i})">削除</button></td>`;
+    body.appendChild(tr);
+  }
+  updateTotals();
+}
+function updateTotals(){
+  const subtotalExcl = cart.reduce((s,x)=>s + x.price_excl * x.qty, 0);
+  const totalIncl    = cart.reduce((s,x)=>s + x.price_incl * x.qty, 0);
+  document.getElementById('subtotal-excl').textContent = '¥' + priceFmt(subtotalExcl);
+  document.getElementById('total-incl').textContent    = '¥' + priceFmt(totalIncl);
+}
+function addItemById(menu_id){
+  const m = __menuMap.get(menu_id);
+  if(!m) return;
+  const qtyInput = document.getElementById('qty-' + menu_id);
+  const qty = Math.max(1, parseInt(qtyInput?.value || '1', 10));
+  const {rate,excl,incl} = computePrices(m);
+  
+  // 時価商品（価格が0円）の場合、価格入力モーダルを表示
+  if (excl === 0) {
+    showMarketPriceModal(menu_id, m.name, qty);
+    return;
+  }
+  
+  const idx = cart.findIndex(x => x.menu_id === menu_id && !x.memo);
+  if (idx >= 0){ cart[idx].qty += qty; }
+  else { cart.push({menu_id, name:m.name, qty, rate, price_excl:excl, price_incl:incl}); }
+  ensureNotEmptyRow(); renderCart();
+}
+function changeQty(i, v){ cart[i].qty=Math.max(1, parseInt(v||'1',10)); renderCart(); }
+function removeItem(i){ cart.splice(i,1); renderCart(); }
+
+/* ========================= カテゴリバー ========================= */
+function bindCategoryBar(){
+  const bar = document.getElementById('cat-bar');
+  bar.addEventListener('click', (ev) => {
+    const pill = ev.target.closest('.pill');
+    if (!pill) return;
+    bar.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+    pill.classList.add('active');
+    loadMenus(pill.dataset.cid);
+  });
+}
+
+/* ========================= 注文送信 ========================= */
+async function submitOrder(){
+  if (!customerDetailOK){ msgCust.textContent='お客様詳細を先に送信してください。'; document.querySelector('.card').scrollIntoView({behavior:'smooth', block:'start'}); return; }
+  if (cart.length === 0){ alert('カゴが空です。'); return; }
+
+  const payload = {
+    table_id: tableId,
+    items: cart.map(x => {
+      const item = {menu_id: x.menu_id, qty: x.qty, memo: x.memo || ''};
+      if (x.actual_price !== undefined) {
+        item.actual_price = x.actual_price;
+      }
+      return item;
+    })
+  };
+  try{
+    const res = await fetch('{{ url_for("staff_api_order") }}', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    const j = await res.json();
+    if (!res.ok || !j.ok){ alert('送信に失敗しました: ' + (j.error || res.status)); return; }
+    alert('送信しました（注文番号: ' + j.order_id + '）');
+    orderId = j.order_id; cart.splice(0); renderCart(); loadOrderDetails();
+    
+    // 印刷処理をブラウザから実行
+    if(j.order_id && j.new_item_ids){
+      triggerPrint(j.order_id, j.new_item_ids).catch(err => {
+        console.error('印刷エラー:', err);
+      });
+    }
+  }catch(e){ alert('通信エラー: ' + e); }
+}
+
+/* ========================= 進行中の注文 ========================= */
+async function loadOrderDetails(){
+  if (orderId === null) {
+    document.getElementById('order-details-container').innerHTML = `<div class="small" style="color:var(--muted)">進行中の注文はありません。</div>`;
+    return;
+  }
+  try{
+    const response = await fetch(`/admin/order/${orderId}/detail/json`);
+    const data = await response.json();
+    if (data.ok){
+      const el = document.getElementById('order-details-container');
+      el.innerHTML = `
+        <div id="order-summary">
+          <div>状態: ${data.order.status}</div>
+          <div>小計: ¥${data.order.total_excl} / 税: ¥${data.order.total_incl - data.order.total_excl} / 合計: <strong>¥${data.order.total_incl}</strong></div>
+        </div>
+        <table style="margin-top:6px">
+          <thead><tr><th>#</th><th>品目</th><th>数量</th><th>単価(税抜)</th><th>状態</th></tr></thead>
+          <tbody id="details-body"></tbody>
+        </table>`;
+      const tbody = document.getElementById('details-body');
+      data.items.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>-</td><td>${item.name}</td><td>${item.qty}</td><td>¥${item.unit_excl}</td><td>${item.status}</td>`;
+        tbody.appendChild(tr);
+      });
+    }else{
+      document.getElementById('order-details-container').innerHTML = `<div class="small" style="color:var(--muted)">進行中の注文はありません。</div>`;
+    }
+  }catch(e){
+    console.error("Failed to fetch order details:", e);
+    document.getElementById('order-details-container').innerHTML = `<div class="small" style="color:var(--danger)">注文詳細の読み込み中にエラーが発生しました。</div>`;
+  }
+}
+
+/* ========================= 時価商品の価格入力モーダル ========================= */
+const marketPriceModal = document.createElement('div');
+marketPriceModal.id = 'market-price-modal';
+marketPriceModal.style.cssText = 'display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center';
+marketPriceModal.innerHTML = `
+  <div style="background:#fff; border-radius:12px; padding:24px; max-width:400px; width:90%">
+    <h3 style="margin:0 0 16px">時価商品の価格設定</h3>
+    <div style="margin-bottom:12px"><strong id="market-item-name"></strong></div>
+    <div style="margin-bottom:12px">
+      <label><input type="radio" name="price-mode" value="excl" checked> 税抜価格で入力</label><br>
+      <label><input type="radio" name="price-mode" value="incl"> 税込価格で入力</label>
+    </div>
+    <div style="margin-bottom:16px">
+      <label>価格（円）</label><br>
+      <input id="market-price-input" type="number" min="0" step="1" style="width:100%; height:36px; border:1px solid var(--border); border-radius:8px; padding:0 8px">
+    </div>
+    <div style="display:flex; gap:8px; justify-content:flex-end">
+      <button class="btn sub" onclick="closeMarketPriceModal()">キャンセル</button>
+      <button class="btn" onclick="saveMarketPrice()">保存</button>
+    </div>
+  </div>
+`;
+document.body.appendChild(marketPriceModal);
+
+let pendingMarketItem = null;
+
+function showMarketPriceModal(menuId, menuName, qty) {
+  pendingMarketItem = { menuId, menuName, qty };
+  document.getElementById('market-item-name').textContent = menuName + ' x' + qty;
+  document.getElementById('market-price-input').value = '';
+  document.querySelector('input[name="price-mode"][value="excl"]').checked = true;
+  marketPriceModal.style.display = 'flex';
+}
+
+function closeMarketPriceModal() {
+  marketPriceModal.style.display = 'none';
+  pendingMarketItem = null;
+}
+
+function saveMarketPrice() {
+  if (!pendingMarketItem) return;
+  
+  const price = parseInt(document.getElementById('market-price-input').value || '0', 10);
+  if (price <= 0) {
+    alert('価格を入力してください。');
+    return;
+  }
+  
+  const mode = document.querySelector('input[name="price-mode"]:checked').value;
+  const m = __menuMap.get(pendingMarketItem.menuId);
+  if (!m) return;
+  
+  const rate = toRate(m.rate);
+  let excl, incl;
+  
+  if (mode === 'incl') {
+    // 税込価格で入力された場合、税抜価格を逆算（切り上げ）
+    excl = Math.ceil(price / (1 + rate));
+    incl = excl + Math.floor(excl * rate);
+  } else {
+    // 税抜価格で入力された場合
+    excl = price;
+    incl = excl + Math.floor(excl * rate);
+  }
+  
+  const idx = cart.findIndex(x => x.menu_id === pendingMarketItem.menuId && !x.memo);
+  if (idx >= 0) {
+    cart[idx].qty += pendingMarketItem.qty;
+    cart[idx].actual_price = excl;  // 税抜価格を保存
+  } else {
+    cart.push({
+      menu_id: pendingMarketItem.menuId,
+      name: m.name,
+      qty: pendingMarketItem.qty,
+      rate: rate,
+      price_excl: excl,
+      price_incl: incl,
+      actual_price: excl  // 税抜価格を保存
+    });
+  }
+  
+  ensureNotEmptyRow();
+  renderCart();
+  closeMarketPriceModal();
+}
+
+/* ========================= 印刷処理 ========================= */
+async function triggerPrint(orderId, newItemIds) {
+  try {
+    // プリンター設定を取得
+    const printerRes = await fetch('/api/printer_config');
+    if (!printerRes.ok) {
+      console.warn('プリンター設定が取得できませんでした');
+      return;
+    }
+    const printerConfig = await printerRes.json();
+    if (!printerConfig || !printerConfig.printer_server_url) {
+      console.warn('印刷サーバーURLが設定されていません');
+      return;
+    }
+    
+    // 印刷データを取得（サーバーから返されたOrderItem IDを使用）
+    const itemIdsStr = Array.isArray(newItemIds) ? newItemIds.join(',') : String(newItemIds);
+    console.log('[DEBUG] triggerPrint - newItemIds:', newItemIds);
+    console.log('[DEBUG] triggerPrint - itemIdsStr:', itemIdsStr);
+    const printDataUrl = `/api/print_data/${orderId}?new_items=${itemIdsStr}`;
+    console.log('[DEBUG] triggerPrint - printDataUrl:', printDataUrl);
+    const printDataRes = await fetch(printDataUrl);
+    if (!printDataRes.ok) {
+      console.error('印刷データの取得に失敗しました');
+      return;
+    }
+    const printData = await printDataRes.json();
+    if (!printData) {
+      console.error('印刷データが空です');
+      return;
+    }
+    
+    // 印刷サーバーに送信
+    const printUrl = printerConfig.printer_server_url.replace(/\/$/, '') + '/print';
+    const printRes = await fetch(printUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: printData.text })
+    });
+    
+    if (printRes.ok) {
+      const result = await printRes.json();
+      console.log('印刷成功:', result.message);
+    } else {
+      const error = await printRes.json().catch(() => ({}));
+      console.error('印刷リクエストが失敗しました:', printRes.status, error);
+    }
+  } catch (err) {
+    console.error('印刷処理中にエラーが発生しました:', err);
+  }
+}
+
+/* ========================= 起動時 ========================= */
+document.addEventListener('DOMContentLoaded', () => {
+  bindCategoryBar();
+  renderCart();
+  loadMenus(0);          // すべて：カテゴリ順→カテゴリ内順
+  fetchCustStatus();     // お客様詳細の登録状況
+  if (orderId){ loadOrderDetails(); setInterval(loadOrderDetails, 5000); }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>メニュー新規作成</h2>
+
+<!-- 価格入力モードトグル -->
+<form action="{{ url_for('set_price_mode') }}" method="post" style="margin:8px 0 16px 0; display:flex; gap:10px; align-items:center">
+  <input type="hidden" name="mode" value="{{ 'excl' if price_input_mode=='incl' else 'incl' }}">
+  <button type="submit" class="btn sub">
+    価格入力: {{ '税込入力' if price_input_mode=='incl' else '税抜入力' }} → 切替
+  </button>
+  <span class="small" style="color:var(--muted)">
+    現在: <strong>{{ '税込入力' if price_input_mode=='incl' else '税抜入力' }}</strong>（ブラウザ単位）
+  </span>
+</form>
+
+<div class="card" style="max-width:720px">
+  <form id="menu-create-form" method="post" action="{{ url_for('admin_menu_new') }}" enctype="multipart/form-data">
+    <label>名称</label>
+    <input name="名称" required placeholder="例：唐揚げ">
+
+    <label>
+      価格
+      <span class="small" style="margin-left:6px;color:var(--muted)">
+        （現在の入力モード: {{ '税抜' if price_input_mode == 'excl' else '税込' }}）
+      </span>
+    </label>
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px">
+      <label style="margin:0; display:flex; align-items:center; gap:6px">
+        <input type="checkbox" id="is-market-price" name="時価" value="1" onchange="toggleMarketPrice()">
+        <span>時価（価格未定）</span>
+      </label>
+    </div>
+    <input id="price-input" name="価格" type="number" required
+           placeholder="{{ '税抜価格' if price_input_mode == 'excl' else '税込価格' }}"
+           inputmode="numeric" min="0" step="1">
+
+    <!-- ライブ換算 -->
+    <div class="small" style="margin:6px 0 10px;color:var(--muted)">
+      保存時の換算:
+      <span id="live-excl" class="badge">—</span>
+      ／ 表示用税込:
+      <span id="live-incl" class="badge">—</span>
+      <span class="small" style="margin-left:8px">（実効税率: <span id="live-rate">—</span>）</span>
+      <div style="margin-top:4px">
+        <small>※DBには常に<strong>税抜</strong>で保存します。<br>
+        ※税込入力モードのときは「税抜 = 税込 − floor( 税込 × 税率 / (1 + 税率) )」で換算します。</small>
+      </div>
+    </div>
+
+    <label>写真ファイル（推奨）</label>
+    <input type="file" name="写真ファイル" accept="image/*">
+
+    <label>写真URL（任意）</label>
+    <input name="写真URL" placeholder="公開URL（直リンク可能なもの）">
+
+    <label>説明</label>
+    <textarea name="説明" rows="3" placeholder="メモや特徴など（任意）"></textarea>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px">
+      <div>
+        <label>（参考）基本税率</label>
+        <input id="menu-base-rate" name="税率" type="number" value="0.10" step="0.01" min="0" inputmode="decimal">
+        <div class="small" style="color:var(--muted);margin-top:4px">
+          ※カテゴリ別税率が設定されている場合はそちらが優先されます。
+        </div>
+      </div>
+      <div>
+        <label>（メニュー全体の）表示順</label>
+        <input name="表示順" type="number" value="0" inputmode="numeric">
+      </div>
+    </div>
+
+    <label style="margin-top:12px">
+      カテゴリ（必須・複数可）
+    </label>
+    <div id="cat-rows">
+      <div class="cat-row" style="display:flex; gap:8px; align-items:center; margin-bottom:6px; flex-wrap:wrap">
+        <select name="cat_id[]">
+          <option value="">（未選択）</option>
+          {% for c in cats %}
+            {% set indent = '&nbsp;&nbsp;&nbsp;&nbsp;' * (c.depth - 1) %}
+            <option value="{{ c.id }}">{{ indent|safe }}{{ c.name }}</option>
+          {% endfor %}
+        </select>
+        <input name="cat_tax[]" type="number" value="0.10" step="0.01" min="0" inputmode="decimal" style="width:120px" placeholder="税率(例 0.10)">
+        <input name="cat_order[]" type="number" value="0" style="width:120px" placeholder="カテゴリ内表示順" inputmode="numeric">
+        <button type="button" class="btn sub" onclick="removeCatRow(this)">－</button>
+      </div>
+    </div>
+    <div class="small" style="color:var(--muted);margin-top:-2px;margin-bottom:6px">
+      ・税率はカテゴリごとに設定できます（例：10% は <code>0.10</code>）。<br>
+      ・実効税率は <strong>カテゴリ行を表示順で昇順</strong>に並べた際に最初に指定された税率を採用。未指定なら「基本税率」。<br>
+    </div>
+    <button type="button" class="btn sub" onclick="addCatRow()">＋ カテゴリ行を追加</button>
+
+    <div style="margin-top:12px">
+      <button class="btn" type="submit">登録</button>
+      <a class="btn sub" href="{{ url_for('admin_menu_home') }}" style="margin-left:8px">戻る</a>
+    </div>
+  </form>
+</div>
+
+<script>
+function addCatRow(){
+  const wrap = document.getElementById('cat-rows');
+  const first = wrap.querySelector('.cat-row');
+  const clone = first.cloneNode(true);
+  const sel = clone.querySelector('select[name="cat_id[]"]');
+  const tax = clone.querySelector('input[name="cat_tax[]"]');
+  const ord = clone.querySelector('input[name="cat_order[]"]');
+  if (sel) sel.selectedIndex = 0;
+  if (tax) tax.value = '0.10';
+  if (ord) ord.value = 0;
+  wrap.appendChild(clone);
+  bindLiveHandlers(clone);
+  computeLive();
+}
+function removeCatRow(btn){
+  const row = btn.closest('.cat-row');
+  const wrap = document.getElementById('cat-rows');
+  if (!row || !wrap) return;
+  const rows = wrap.querySelectorAll('.cat-row');
+  if (rows.length > 1){ row.remove(); } else {
+    const sel = row.querySelector('select[name="cat_id[]"]');
+    const tax = row.querySelector('input[name="cat_tax[]"]');
+    const ord = row.querySelector('input[name="cat_order[]"]');
+    if (sel) sel.selectedIndex = 0;
+    if (tax) tax.value = '0.10';
+    if (ord) ord.value = 0;
+  }
+  computeLive();
+}
+document.getElementById('menu-create-form').addEventListener('submit', function(ev){
+  const wrap = document.getElementById('cat-rows');
+  const sels = Array.from(wrap.querySelectorAll('select[name="cat_id[]"]'));
+  const taxes = Array.from(wrap.querySelectorAll('input[name="cat_tax[]"]'));
+  let chosen = sels.map(s => s.value).filter(v => v !== '');
+  if (chosen.length === 0){ alert('少なくとも1つはカテゴリを選択してください。'); ev.preventDefault(); return false; }
+  const set = new Set(chosen);
+  if (set.size !== chosen.length){ alert('同じカテゴリが重複しています。'); ev.preventDefault(); return false; }
+  for (let i = 0; i < taxes.length; i++){
+    const v = taxes[i].value.trim();
+    if (sels[i].value !== ''){ if (v === '' || isNaN(Number(v)) || Number(v) < 0){ alert('カテゴリ税率は0以上の数値で。'); ev.preventDefault(); return false; } }
+  }
+  return true;
+});
+function rateToFrac(rateStr){
+  const s = String(rateStr ?? "0").trim();
+  if (s === "") return {n:0, d:1};
+  const p = s.indexOf(".");
+  if (p === -1) return {n: parseInt(s,10)||0, d: 1};
+  const digits = s.length - p - 1;
+  const n = parseInt(s.replace(".", ""), 10) || 0;
+  const d = 10 ** digits;
+  return {n, d};
+}
+function getEffectiveRateStr(){
+  const wrap = document.getElementById('cat-rows');
+  const rows = Array.from(wrap.querySelectorAll('.cat-row')).map(r => {
+    const sel = r.querySelector('select[name="cat_id[]"]');
+    const tax = r.querySelector('input[name="cat_tax[]"]');
+    const ord = r.querySelector('input[name="cat_order[]"]');
+    return { hasCat: !!sel && sel.value !== '', taxStr: tax ? tax.value.trim() : '', ord: ord && ord.value.trim() !== '' ? Number(ord.value) : 0 };
+  }).sort((a,b) => (a.ord||0) - (b.ord||0));
+  for (const r of rows){ if (r.hasCat && r.taxStr !== '') return r.taxStr; }
+  const base = document.getElementById('menu-base-rate');
+  return (base && base.value.trim() !== '') ? base.value.trim() : '0.10';
+}
+function computeLive(){
+  const mode = "{{ price_input_mode }}";
+  const priceEl = document.getElementById('price-input');
+  const liveEx = document.getElementById('live-excl');
+  const liveIn = document.getElementById('live-incl');
+  const liveRt = document.getElementById('live-rate');
+  const raw = priceEl && priceEl.value.trim() !== '' ? Math.max(0, parseInt(priceEl.value,10) || 0) : 0;
+  const rateStr = getEffectiveRateStr();
+  const {n, d} = rateToFrac(rateStr);
+  let excl = 0, incl = 0;
+  if (mode === 'incl'){
+    const taxFromIncl = Math.floor(raw * n / (d + n));
+    excl = raw - taxFromIncl;
+    incl = excl + Math.floor(excl * n / d);
+  } else {
+    excl = raw;
+    incl = excl + Math.floor(excl * n / d);
+  }
+  liveEx.textContent = '税抜 ¥' + excl.toLocaleString();
+  liveIn.textContent = '税込 ¥' + incl.toLocaleString();
+  liveRt.textContent = (d ? (n * 100 / d) : 0).toFixed(2) + '%';
+}
+function bindLiveHandlers(root){
+  (root.querySelectorAll ? root.querySelectorAll('select[name="cat_id[]"], input[name="cat_tax[]"], input[name="cat_order[]"]') : [])
+    .forEach(el=>{ el.addEventListener('input', computeLive); el.addEventListener('change', computeLive); });
+}
+function toggleMarketPrice(){
+  const checkbox = document.getElementById('is-market-price');
+  const priceInput = document.getElementById('price-input');
+  if (checkbox && priceInput){
+    if (checkbox.checked){
+      priceInput.value = '0';
+      priceInput.disabled = true;
+      priceInput.required = false;
+    } else {
+      priceInput.disabled = false;
+      priceInput.required = true;
+    }
+    computeLive();
+  }
+}
+document.addEventListener('DOMContentLoaded', ()=>{
+  document.getElementById('price-input')?.addEventListener('input', computeLive);
+  document.getElementById('menu-base-rate')?.addEventListener('input', computeLive);
+  bindLiveHandlers(document);
+  computeLive();
+});
+</script>
+{% endblock %}

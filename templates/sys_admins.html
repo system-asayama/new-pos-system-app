@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}SysAdmin 管理{% endblock %}
+{% block content %}
+<h1>SysAdmin 管理</h1>
+
+<h2>追加</h2>
+<form method="post" action="{{ url_for('sys_admins_update') }}">
+  <input type="hidden" name="op" value="add">
+  <input type="hidden" name="csrf_token" value="{{ get_csrf() if get_csrf is defined }}">
+  <input name="login_id" placeholder="ログインID">
+  <input name="name" placeholder="氏名">
+  <input name="password" type="password" placeholder="パスワード">
+  <button class="btn" type="submit">追加</button>
+</form>
+
+<h2>一覧</h2>
+<table>
+  <thead><tr><th>ID</th><th>氏名</th><th>ログインID</th><th>有効</th><th>操作</th></tr></thead>
+  <tbody>
+  {% for u in users %}
+    <tr>
+      <td>{{ u.id }}</td>
+      <td>{{ u.name }}</td>
+      <td>{{ u.login_id }}</td>
+      <td>{{ "有効" if u.active==1 else "無効" }}</td>
+      <td style="display:flex; gap:.5rem;">
+        <form method="post" action="{{ url_for('sys_admins_update') }}">
+          <input type="hidden" name="op" value="toggle">
+          <input type="hidden" name="id" value="{{ u.id }}">
+          <input type="hidden" name="csrf_token" value="{{ get_csrf() if get_csrf is defined }}">
+          <button type="submit">{{ "無効化" if u.active==1 else "有効化" }}</button>
+        </form>
+        <form method="post" action="{{ url_for('sys_admins_update') }}">
+          <input type="hidden" name="op" value="resetpw">
+          <input type="hidden" name="id" value="{{ u.id }}">
+          <input type="hidden" name="csrf_token" value="{{ get_csrf() if get_csrf is defined }}">
+          <input name="password" type="password" placeholder="新パスワード">
+          <button type="submit">PW更新</button>
+        </form>
+        <form method="post" action="{{ url_for('sys_admins_update') }}" onsubmit="return confirm('削除しますか？');">
+          <input type="hidden" name="op" value="delete">
+          <input type="hidden" name="id" value="{{ u.id }}">
+          <input type="hidden" name="csrf_token" value="{{ get_csrf() if get_csrf is defined }}">
+          <button type="submit">削除</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<p style="margin-top:1rem;">
+  <a class="btn secondary" href="{{ url_for('dev_tools') }}">Dev Tools に戻る</a>
+</p>
+{% endblock %}

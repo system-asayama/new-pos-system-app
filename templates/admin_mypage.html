@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 style="margin:0 0 12px">管理者マイページ</h2>
+
+<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px">
+
+  <!-- プロフィール（表示） -->
+  <section class="card">
+    <h3 style="margin:0 0 8px">プロフィール</h3>
+    <table>
+      <tr>
+        <th style="width:140px">氏名</th>
+        <td>{{ me.name or me.get('名称') or me.get('氏名') or '—' }}</td>
+      </tr>
+      <tr>
+        <th>ログインID</th>
+        <td><code>{{ me.login_id or me.get('ログインID') or me.get('login_id') or '—' }}</code></td>
+      </tr>
+      <tr>
+        <th>店舗</th>
+        <!-- セッションの現在店舗名を最優先で表示 -->
+        <td>{{ session.get('store_name') or (store and (store.name or store.get('名称') or store.get('店舗名'))) or '-' }}</td>
+      </tr>
+      <tr>
+        <th>最終ログイン</th>
+        <td>{{ me.last_login or me.get('最終ログイン') or me.get('last_login_at') or '—' }}</td>
+      </tr>
+      <tr>
+        <th>作成日時</th>
+        <td>{{ me.created_at or me.get('作成日時') or me.get('登録日時') or me.get('created_at') or '—' }}</td>
+      </tr>
+      <tr>
+        <th>更新日時</th>
+        <td>{{ me.updated_at or me.get('更新日時') or me.get('updated_at') or '—' }}</td>
+      </tr>
+    </table>
+  </section>
+
+  <!-- プロフィール編集 -->
+  <section class="card">
+    <h3 style="margin:0 0 8px">プロフィール編集</h3>
+    <form method="post" action="{{ url_for('admin_mypage') }}" autocomplete="off">
+      <!-- 🔒 CSRF -->
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="action" value="profile">
+
+      <label>氏名</label>
+      <input
+        name="name"
+        required
+        maxlength="100"
+        value="{{ me.name or me.get('名称') or me.get('氏名') or '' }}"
+        autocomplete="name"
+        autocapitalize="none"
+        spellcheck="false"
+      >
+
+      <label>ログインID（英数字と . _ - ／3〜64文字）</label>
+      <input
+        name="login_id"
+        required
+        minlength="3"
+        maxlength="64"
+        pattern="[A-Za-z0-9._-]+"
+        value="{{ me.login_id or me.get('ログインID') or me.get('login_id') or '' }}"
+        autocomplete="username"
+        autocapitalize="none"
+        spellcheck="false"
+      >
+      <div class="small" style="color:var(--muted);margin-top:6px">
+        ※ 変更後は次回ログインから新しいログインIDが有効になります。
+      </div>
+
+      <div class="actions" style="margin-top:12px">
+        <button class="btn" type="submit">更新する</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- パスワード変更 -->
+  <section class="card">
+    <h3 style="margin:0 0 8px">パスワード変更</h3>
+    <form method="post" action="{{ url_for('admin_mypage') }}" autocomplete="off">
+      <!-- 🔒 CSRF -->
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="action" value="password">
+
+      <label>現在のパスワード</label>
+      <input name="current_password" type="password" required autocomplete="current-password">
+
+      <label>新しいパスワード（8文字以上）</label>
+      <input name="new_password" type="password" minlength="8" required autocomplete="new-password">
+
+      <label>新しいパスワード（確認）</label>
+      <input name="confirm_password" type="password" minlength="8" required autocomplete="new-password">
+
+      <div class="actions" style="margin-top:12px">
+        <button class="btn" type="submit">変更する</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- 所属店舗（現在店舗 + その他） -->
+  <section class="card">
+    <h3 style="margin:0 0 8px">所属店舗</h3>
+
+    {% set current_store_id = session.get('store_id')|int %}
+    {% set store_list = (stores|default([])) %}
+
+    {% if store_list and store_list|length > 0 %}
+      <table>
+        <thead>
+          <tr><th style="width:60%">店舗名</th><th>状態</th><th>操作</th></tr>
+        </thead>
+        <tbody>
+          {% for s in store_list %}
+            {% set sid = (s.id if 'id' in s else s.get('id'))|int %}
+            <tr>
+              <td>{{ s.name or s.get('name') }}</td>
+              <td>
+                {% if sid == current_store_id %}
+                  <span class="badge">現在の店舗</span>
+                {% else %}
+                  <span class="small" style="color:var(--muted)">別店舗</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if sid != current_store_id %}
+                  <a class="btn sub"
+                     href="{{ url_for('switch_store', store_id=sid, next=request.full_path) }}">
+                    この店舗に切り替え
+                  </a>
+                {% else %}
+                  <span class="small" style="color:var(--muted)">—</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      {% if session.get('store_name') %}
+        <!-- stores が未渡しでも、現在店舗だけは1行表示 -->
+        <table>
+          <thead>
+            <tr><th style="width:60%">店舗名</th><th>状態</th><th>操作</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>{{ session.get('store_name') }}</td>
+              <td><span class="badge">現在の店舗</span></td>
+              <td><span class="small" style="color:var(--muted)">—</span></td>
+            </tr>
+          </tbody>
+        </table>
+      {% else %}
+        <div class="small" style="color:var(--muted)">所属店舗が登録されていません。</div>
+      {% endif %}
+    {% endif %}
+  </section>
+
+</div>
+{% endblock %}

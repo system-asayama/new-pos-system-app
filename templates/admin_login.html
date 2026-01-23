@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>管理者ログイン</h2>
+
+<div class="card" style="max-width:480px">
+  <form method="post" autocomplete="off">
+    <label>店舗コード</label>
+    <input name="store_code" required placeholder="例: tokyo-main" value="{{ store_code or '' }}">
+
+    <label>ログインID</label>
+    <input name="login_id" required placeholder="admin01">
+
+    <label>パスワード</label>
+    <input name="password" type="password" required>
+
+    <div style="margin-top:12px;display:flex;gap:8px">
+      <button class="btn" type="submit">ログイン</button>
+      <a class="btn sub" href="{{ url_for('login_choice') }}">戻る</a>
+    </div>
+
+    {% if error %}
+      <div class="small" style="color:var(--danger);margin-top:8px">{{ error }}</div>
+    {% endif %}
+  </form>
+</div>
+{% endblock %}

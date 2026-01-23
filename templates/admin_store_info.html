@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{% block title %}店舗情報編集{% endblock %}
+
+{% block content %}
+<style>
+  body {
+    font-family: sans-serif;
+    background: #f9fafb;
+    margin: 0;
+    padding: 20px;
+  }
+  .container {
+    max-width: 800px;
+    margin: 0 auto;
+    background: white;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  }
+  h1 {
+    font-size: 24px;
+    margin-bottom: 10px;
+    color: #1f2937;
+  }
+  .subtitle {
+    color: #6b7280;
+    margin-bottom: 30px;
+  }
+  .form-group {
+    margin-bottom: 20px;
+  }
+  label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #374151;
+  }
+  input[type="text"],
+  textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font-size: 14px;
+    box-sizing: border-box;
+  }
+  textarea {
+    min-height: 80px;
+    resize: vertical;
+  }
+  .help-text {
+    font-size: 12px;
+    color: #6b7280;
+    margin-top: 4px;
+  }
+  .btn-group {
+    display: flex;
+    gap: 10px;
+    margin-top: 30px;
+  }
+  .btn {
+    padding: 12px 24px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+    text-align: center;
+  }
+  .btn-primary {
+    background: #2563eb;
+    color: white;
+  }
+  .btn-primary:hover {
+    background: #1d4ed8;
+  }
+  .btn-secondary {
+    background: #6b7280;
+    color: white;
+  }
+  .btn-secondary:hover {
+    background: #4b5563;
+  }
+  .flash-message {
+    padding: 12px 16px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+  }
+  .flash-success {
+    background: #d1fae5;
+    color: #065f46;
+    border: 1px solid #6ee7b7;
+  }
+  .flash-error {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fca5a5;
+  }
+</style>
+
+<div class="container">
+  <h1>🏪 店舗情報編集</h1>
+  <p class="subtitle">レシート・領収書に印刷される店舗情報を設定します</p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="flash-message flash-{{ category }}">
+          {{ message }}
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <form method="POST">
+    <div class="form-group">
+      <label for="住所">住所</label>
+      <textarea id="住所" name="住所" placeholder="〒123-4567&#10;東京都渋谷区○○町1-2-3">{{ store.address or '' }}</textarea>
+      <div class="help-text">郵便番号と住所を入力してください</div>
+    </div>
+
+    <div class="form-group">
+      <label for="電話番号">電話番号</label>
+      <input type="text" id="電話番号" name="電話番号" value="{{ store.phone or '' }}" placeholder="03-1234-5678">
+      <div class="help-text">ハイフン付きで入力してください</div>
+    </div>
+
+    <div class="form-group">
+      <label for="登録番号">登録番号（インボイス）</label>
+      <input type="text" id="登録番号" name="登録番号" value="{{ store.registration_number or '' }}" placeholder="T1234567890123">
+      <div class="help-text">適格請求書発行事業者の登録番号（Tから始まる13桁）</div>
+    </div>
+
+    <div class="form-group">
+      <label for="営業時間">営業時間</label>
+      <input type="text" id="営業時間" name="営業時間" value="{{ store.business_hours or '' }}" placeholder="11:00-23:00">
+      <div class="help-text">営業時間を入力してください</div>
+    </div>
+
+    <div class="form-group">
+      <label for="レシートフッター">レシートフッター</label>
+      <textarea id="レシートフッター" name="レシートフッター" placeholder="ご来店ありがとうございました。&#10;またのお越しをお待ちしております。">{{ store.receipt_footer or '' }}</textarea>
+      <div class="help-text">レシート下部に表示するメッセージ</div>
+    </div>
+
+    <div class="btn-group">
+      <button type="submit" class="btn btn-primary">💾 保存</button>
+      <a href="{{ url_for('admin_console') }}" class="btn btn-secondary">戻る</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

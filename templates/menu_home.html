@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 style="margin-bottom:12px;">メニュー管理</h2>
+<p class="small" style="color:#666;margin-top:0;">
+  ここから「新規作成」「作成済み一覧」「削除済み一覧」へ進めます。
+</p>
+
+<div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));">
+  <div class="card">
+    <div style="font-size:18px; font-weight:600; margin-bottom:8px;">🆕 新規作成</div>
+    <div class="small" style="color:#666; margin-bottom:12px;">新しいメニューを登録します。</div>
+    <a class="btn" href="{{ url_for('admin_menu_new_form') }}">新規作成へ</a>
+  </div>
+
+  <div class="card">
+    <div style="font-size:18px; font-weight:600; margin-bottom:8px;">📋 作成済みメニュー</div>
+    <div class="small" style="color:#666; margin-bottom:12px;">登録済みのメニューを編集・削除できます。</div>
+    <a class="btn sub" href="{{ url_for('admin_menu_list') }}">一覧を見る</a>
+  </div>
+
+  <div class="card">
+    <div style="font-size:18px; font-weight:600; margin-bottom:8px;">🗑️ 削除済みメニュー</div>
+    <div class="small" style="color:#666; margin-bottom:12px;">削除したメニューを確認・復活できます。</div>
+    <!-- ✅ 修正: 正しいエンドポイント名に変更 -->
+    <a class="btn danger" href="{{ url_for('admin_menu_list_deleted') }}">削除済み一覧へ</a>
+  </div>
+</div>
+{% endblock %}

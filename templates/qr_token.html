@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>セルフオーダー用 QR</h2>
+
+<div class="card" style="max-width:720px;margin:auto;text-align:center">
+  <p class="muted">テーブル：<b>{{ table_no or '-' }}</b></p>
+  <p class="muted">トークン：<code>{{ token }}</code></p>
+  {% if expires_at %}<p class="muted">有効期限：{{ expires_at }}</p>{% endif %}
+
+  <div style="display:flex;justify-content:center;margin:12px 0">
+    <!-- 外部ライブラリ不要の簡易表示。QR画像エンドポイントを別で持つ場合は差し替えてください。 -->
+    <img alt="QR" width="240" height="240"
+         src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data={{ open_url|urlencode }}">
+  </div>
+
+  <p><a class="btn" target="_blank" href="{{ open_url }}">リンクを開く</a></p>
+  <p class="muted" style="margin-top:12px">
+    このQRを卓上POPとして印刷・設置してください。再発行すると新しいトークンになります。
+  </p>
+  <div class="stack" style="justify-content:center;margin-top:12px">
+    <button class="btn" onclick="window.print()">印刷</button>
+    <a class="btn" href="{{ url_for('floor') }}">フロアへ戻る</a>
+  </div>
+</div>
+{% endblock %}

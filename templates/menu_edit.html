@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block head_extra %}
+<style>
+  :root{--border:#e5e7eb;--muted:#6b7280;--primary:#2563eb}
+  .wrap{max-width:900px;margin:24px auto;padding:0 16px}
+  .card{background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px}
+  .row{display:flex;gap:16px;flex-wrap:wrap}
+  label{display:block;font-size:14px;color:var(--muted);margin:10px 0 6px}
+  input,textarea,select{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;font-size:16px}
+  textarea{min-height:96px;resize:vertical}
+  .btn{display:inline-block;padding:10px 14px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:14px;text-decoration:none;cursor:pointer}
+  .btn.sub{background:#eef2f7;color:#1f2937;border:1px solid var(--border)}
+  .grid{display:grid;grid-template-columns:1fr;gap:16px}
+  @media(min-width:860px){.grid{grid-template-columns:1fr 1fr}}
+  .catlist{border:1px dashed var(--border);border-radius:10px;padding:12px}
+  .catitem{display:grid;grid-template-columns:24px 1fr 80px 90px;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid #f3f4f6}
+  .catitem:last-child{border-bottom:none}
+  .depth-2{padding-left:12px}.depth-3{padding-left:24px}.depth-4{padding-left:36px}
+  .hint{color:var(--muted);font-size:12px}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="wrap">
+  <h2 style="margin:0 0 12px">メニュー編集</h2>
+  <p class="hint" style="margin-top:0">
+    価格入力モード: <strong>{{ '税込' if price_input_mode=='incl' else '税抜' }}</strong>
+    （フォームの「価格」はこのモードで入力します）
+  </p>
+
+  <form id="edit-form" method="post" enctype="multipart/form-data" class="card">
+    {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
+
+    <div class="grid">
+      <div>
+        <label>名称</label>
+        <input name="名称" value="{{ m['名称'] }}" required>
+
+        <label style="margin-top:12px">価格</label>
+        <input name="価格" type="number" inputmode="numeric" value="{{ initial_price }}" required>
+        <div class="hint">
+          {% if price_input_mode=='incl' %}
+            税込価格を入力（表示例: 現在の税込=¥{{ m['税込価格'] }}）
+          {% else %}
+            税抜価格を入力（参考: 現在の税込=¥{{ m['税込価格'] }}）
+          {% endif %}
+        </div>
+
+        <label style="margin-top:12px">税率</label>
+        <input name="税率" type="number" step="0.001" value="{{ m['税率'] or 0.1 }}">
+        <div class="hint">例: 10% は 0.1</div>
+
+        <label style="margin-top:12px">表示順</label>
+        <input name="表示順" type="number" value="{{ m['表示順'] or 0 }}">
+
+        <label style="margin-top:16px; display:flex; align-items:center; gap:8px; cursor:pointer">
+          <input name="時価" type="checkbox" value="1" {% if m.get('時価') %}checked{% endif %} style="width:auto">
+          <span>時価商品（価格が未定の商品）</span>
+        </label>
+        <div class="hint">チェックすると、メニューに「時価」と表示されます。</div>
+      </div>
+
+      <div>
+        <label>写真URL</label>
+        <input name="写真URL" value="{{ m['写真URL'] or '' }}">
+        <label style="margin-top:12px">写真ファイル</label>
+        <input name="写真ファイル" type="file" accept=".jpg,.jpeg,.png,.gif,.webp">
+        <label style="margin-top:12px">説明</label>
+        <textarea name="説明">{{ m['説明'] or '' }}</textarea>
+      </div>
+    </div>
+
+    <div style="margin-top:16px">
+      <label>カテゴリ選択</label>
+      <div class="catlist" id="cat-list">
+        <div class="hint" style="margin-bottom:6px">チェックしたカテゴリだけが保存されます。表示順・個別税率（任意）を設定できます。</div>
+
+        {# 既存選択を map 化 #}
+        {% set selected_map = {} %}
+        {% for ln in selected_links %}
+          {% set _ = selected_map.update({ ln.category_id: {'order': ln.display_order, 'tax': ln.tax_rate} }) %}
+        {% endfor %}
+
+        {% for c in cats %}
+          {% set checked = 1 if c.id in selected_map else 0 %}
+          {% set od = (selected_map[c.id]['order'] if checked else 0) %}
+          {% set tx = (selected_map[c.id]['tax'] if checked else '') %}
+          <div class="catitem">
+            <input type="checkbox" class="cat-chk" data-cid="{{ c.id }}" {% if checked %}checked{% endif %}>
+            <div class="depth-{{ c.depth|default(1) }}">
+              {{ c.name }}
+            </div>
+            <input type="number" class="cat-order" data-cid="{{ c.id }}" value="{{ od }}" placeholder="表示順">
+            <input type="number" step="0.001" class="cat-tax" data-cid="{{ c.id }}" value="{{ tx }}" placeholder="個別税率">
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# 送信用の配列（JS で埋める） #}
+    <div id="cat-hidden-box"></div>
+
+    <div style="margin-top:16px; display:flex; gap:8px; flex-wrap:wrap">
+      <button class="btn" type="submit">保存する</button>
+      <a class="btn sub" href="{{ url_for('admin_menu_list') }}">戻る</a>
+    </div>
+  </form>
+</div>
+
+<script>
+/**
+ * チェックされたカテゴリについて、
+ *   cat_id[] / cat_order[] / cat_tax[]
+ * を同じ順序で hidden input として作り直して送信します。
+ */
+document.getElementById('edit-form').addEventListener('submit', function(ev){
+  // 既存 hidden をクリア
+  const box = document.getElementById('cat-hidden-box');
+  box.innerHTML = '';
+
+  // チェック済みを DOM 順で収集
+  const rows = document.querySelectorAll('#cat-list .catitem');
+  const selected = [];
+  rows.forEach(row => {
+    const chk = row.querySelector('.cat-chk');
+    if (chk && chk.checked) {
+      const cid = chk.dataset.cid;
+      const od  = row.querySelector('.cat-order[data-cid="'+cid+'"]').value || '0';
+      const tx  = row.querySelector('.cat-tax[data-cid="'+cid+'"]').value || '';
+      selected.push({cid, od, tx});
+    }
+  });
+
+  if (selected.length === 0){
+    ev.preventDefault();
+    alert('カテゴリは必ず1つ以上選択してください。');
+    return false;
+  }
+
+  // hidden 配列を同じ順で作成
+  selected.forEach(item => {
+    const hid1 = document.createElement('input');
+    hid1.type='hidden'; hid1.name='cat_id[]'; hid1.value=item.cid;
+    const hid2 = document.createElement('input');
+    hid2.type='hidden'; hid2.name='cat_order[]'; hid2.value=item.od;
+    const hid3 = document.createElement('input');
+    hid3.type='hidden'; hid3.name='cat_tax[]'; hid3.value=item.tx;
+    box.appendChild(hid1); box.appendChild(hid2); box.appendChild(hid3);
+  });
+});
+</script>
+{% endblock %}

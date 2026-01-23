@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>開発者マイページ（ログインID/パスワード変更）</h2>
+
+<div class="card" style="max-width:640px">
+  <form method="post" action="{{ url_for('sys_admins_update') }}" autocomplete="off" novalidate>
+    <!-- 🔒 CSRF -->
+    <input type="hidden" name="csrf_token" value="{{ get_csrf() }}">
+
+    <h3>現在の情報</h3>
+    <p class="small">
+      現在のログインID:
+      <code>{{ me.username|default('ゲスト', true) }}</code>
+      ／ 役割:
+      <code>{{ me.role|default('なし', true) }}</code>
+      ／ 作成:
+      {{ me.created_at|default('-', true) }}
+    </p>
+
+    <h3 style="margin-top:16px">変更</h3>
+
+    <label>現在のパスワード <span class="small" style="color:#666">(本人確認のため必須)</span></label>
+    <input name="current_password" type="password" required>
+
+    <label style="margin-top:10px">新しいログインID（省略可）</label>
+    <input
+      name="new_username"
+      placeholder="例: dev_taro"
+      pattern="[A-Za-z0-9._-]{3,64}"
+      title="英数字と . _ - が使用できます（3〜64文字）"
+    >
+    <div class="small" style="color:#666">英数字と . _ - が使用できます。3〜64 文字。</div>
+
+    <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap">
+      <div style="flex:1 1 240px">
+        <label>新しいパスワード（省略可, 8文字以上）</label>
+        <input name="new_password" type="password" minlength="8" placeholder="********">
+      </div>
+      <div style="flex:1 1 240px">
+        <label>新しいパスワード（確認）</label>
+        <input name="confirm_password" type="password" minlength="8" placeholder="********">
+      </div>
+    </div>
+
+    {% if error %}
+      <div class="small" style="color:var(--danger); margin-top:8px">{{ error }}</div>
+    {% endif %}
+
+    <div style="margin-top:14px; display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+      <button class="btn" type="submit">更新する</button>
+      <a class="btn sub" href="{{ url_for('dev_tools') }}">開発者ツールに戻る</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

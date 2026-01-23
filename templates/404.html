@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card" style="max-width:640px;margin:40px auto;text-align:center">
+  <h2>404 Not Found</h2>
+  <p class="muted">ページが見つかりませんでした。</p>
+  <div class="stack" style="justify-content:center;margin-top:12px">
+    <a class="btn" href="{{ url_for('index') }}">ホームへ</a>
+    <a class="btn" href="{{ request.referrer or url_for('index') }}">前のページへ戻る</a>
+  </div>
+</div>
+{% endblock %}
