@@ -203,7 +203,41 @@
                 <span>合計</span>
                 <span>￥{{ "{:,}".format(total) }}</span>
             </div>
+            
+            {% if discount_details %}
+            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #000;">
+                <div style="font-weight: bold; margin-bottom: 5px;">値引き</div>
+                {% for discount in discount_details %}
+                <div class="total-row">
+                    <span>{{ discount.method_name }}</span>
+                    <span>-￥{{ "{:,}".format(discount.amount) }}</span>
+                </div>
+                {% endfor %}
+                <div class="total-row grand" style="margin-top: 5px;">
+                    <span>値引き後合計</span>
+                    <span>￥{{ "{:,}".format(total_after_discount) }}</span>
+                </div>
+            </div>
+            {% endif %}
         </div>
+        
+        {% if payment_details %}
+        <div class="receipt-total" style="margin-top: 15px; border-top: 1px dashed #000; padding-top: 10px;">
+            <div style="font-weight: bold; margin-bottom: 5px;">支払い内訳</div>
+            {% for payment in payment_details %}
+            <div class="total-row">
+                <span>{{ payment.method_name }}</span>
+                <span>￥{{ "{:,}".format(payment.amount) }}</span>
+            </div>
+            {% endfor %}
+            {% if change > 0 %}
+            <div class="total-row" style="margin-top: 8px; padding-top: 5px; border-top: 1px solid #000;">
+                <span>おつり</span>
+                <span>￥{{ "{:,}".format(change) }}</span>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
     </div>
     
     <div class="receipt-footer">

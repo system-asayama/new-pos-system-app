@@ -54,6 +54,10 @@
         <label style="margin-top:12px">表示順</label>
         <input name="表示順" type="number" value="{{ m['表示順'] or 0 }}">
 
+        <label style="margin-top:12px">KDS判定グループ</label>
+        <input name="KDS判定グループ" value="{{ m.get('KDS判定グループ') or '' }}" placeholder="例: drink, food">
+        <div class="hint">メニュー個別のKDS判定グループ。未設定の場合はカテゴリの設定を使用します。</div>
+
         <label style="margin-top:16px; display:flex; align-items:center; gap:8px; cursor:pointer">
           <input name="時価" type="checkbox" value="1" {% if m.get('時価') %}checked{% endif %} style="width:auto">
           <span>時価商品（価格が未定の商品）</span>

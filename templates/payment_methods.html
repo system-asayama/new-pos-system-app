@@ -21,6 +21,12 @@
       <label>名称</label>
       <input name="名称" required placeholder="例: 現金">
 
+      <label>カテゴリ</label>
+      <select name="カテゴリ" required>
+        <option value="payment" selected>支払い（現金同等物）</option>
+        <option value="discount">値引き</option>
+      </select>
+
       <label>表示順</label>
       <input name="表示順" type="number" inputmode="numeric" value="0">
 
@@ -43,6 +49,7 @@
           <th style="width:56px">#</th>
           <th style="width:140px">コード</th>
           <th>名称</th>
+          <th style="width:120px">カテゴリ</th>
           <th style="width:96px">表示順</th>
           <th style="width:96px">有効</th>
           <th style="width:180px">操作</th>
@@ -54,6 +61,15 @@
           <td>{{ r['id'] }}</td>
           <td><code>{{ r['コード'] }}</code></td>
           <td>{{ r['名称'] }}</td>
+          <td>
+            {% if r.get('カテゴリ') %}
+              <span class="badge" style="{% if r['カテゴリ'] == '値引き' %}background:#fbbf24;color:#78350f{% else %}background:#10b981;color:#fff{% endif %}">
+                {{ r['カテゴリ'] }}
+              </span>
+            {% else %}
+              -
+            {% endif %}
+          </td>
           <td>{{ r['表示順'] }}</td>
           <td>
             {% if r['有効'] == 1 %}
@@ -63,6 +79,9 @@
             {% endif %}
           </td>
           <td>
+            <button class="btn sub" onclick="openEditModal({{ r['id'] }}, '{{ r['名称'] }}', '{{ r.get('カテゴリ', '支払い') }}', {{ r['表示順'] }})" style="margin-right:4px">
+              編集
+            </button>
             <form method="post"
                   action="{{ url_for('admin_payment_methods_toggle', pid=r['id']) }}"
                   style="display:inline">
@@ -70,13 +89,12 @@
                 {{ '無効化' if r['有効']==1 else '有効化' }}
               </button>
             </form>
-            <!-- ここに将来的な編集/削除ボタンを追加可能（ルート実装後） -->
           </td>
         </tr>
         {% endfor %}
         {% if not rows %}
         <tr>
-          <td colspan="6" class="small">未登録です。左のフォームから追加してください。</td>
+          <td colspan="7" class="small">未登録です。左のフォームから追加してください。</td>
         </tr>
         {% endif %}
       </tbody>
@@ -92,4 +110,57 @@
 <div style="margin-top:16px">
   <a class="btn sub" href="{{ url_for('floor') }}">フロアへ戻る</a>
 </div>
+
+<!-- 編集モーダル -->
+<div id="editModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
+  <div style="background:white; padding:24px; border-radius:8px; max-width:500px; width:90%;">
+    <h3 style="margin-top:0;">支払い方法の編集</h3>
+    <form id="editForm" method="post" action="">
+      <label>名称</label>
+      <input id="editName" name="名称" required>
+      
+      <label>カテゴリ</label>
+      <select id="editCategory" name="カテゴリ" required>
+        <option value="payment">支払い（現金同等物）</option>
+        <option value="discount">値引き</option>
+      </select>
+      
+      <label>表示順</label>
+      <input id="editOrder" name="表示順" type="number" inputmode="numeric" required>
+      
+      <div style="margin-top:16px; display:flex; gap:8px;">
+        <button class="btn" type="submit">更新</button>
+        <button class="btn sub" type="button" onclick="closeEditModal()">キャンセル</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openEditModal(id, name, category, order) {
+  document.getElementById('editForm').action = '/admin/payment_methods/' + id + '/edit';
+  document.getElementById('editName').value = name;
+  
+  // カテゴリの値を設定（日本語から英語に変換）
+  var categoryValue = 'payment';
+  if (category === '値引き') {
+    categoryValue = 'discount';
+  }
+  document.getElementById('editCategory').value = categoryValue;
+  
+  document.getElementById('editOrder').value = order;
+  document.getElementById('editModal').style.display = 'flex';
+}
+
+function closeEditModal() {
+  document.getElementById('editModal').style.display = 'none';
+}
+
+// モーダル背景クリックで閉じる
+document.getElementById('editModal').addEventListener('click', function(e) {
+  if (e.target === this) {
+    closeEditModal();
+  }
+});
+</script>
 {% endblock %}

@@ -105,7 +105,11 @@
         注文ID: {{ order_id if order_id is not none else '—' }}
         {% if total_amt %}/ 合計: ¥{{ total_amt|int }}{% endif %}
         / 既払: ¥{{ paid_int|int }}
-        / 残額: ¥{{ remaining_int|int }}
+        {% if paid_int > total_amt %}
+        / おつり: ￥{{ (paid_int - total_amt)|int }}
+        {% else %}
+        / 残額: ￥{{ remaining_int|int }}
+        {% endif %}
         {% if status %}/ 状態: <strong>{{ status }}</strong>{% endif %}
       </div>
     {% else %}
@@ -193,9 +197,12 @@
 
     <!-- 支払行 -->
     <div id="pay-rows" style="display:flex; flex-direction:column; gap:8px; margin-top:12px"></div>
+    
+    <!-- 不足表示エリア（最下部に固定） -->
+    <div id="shortage-display" style="display:none; padding:12px; margin-top:12px; background:#fef2f2; border:2px solid #dc2626; border-radius:6px; font-size:1.2em; font-weight:bold; color:#dc2626; text-align:center;"></div>
 
     <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap">
-      <button class="btn sub" type="button" onclick="addPayRow()">支払方法を追加</button>
+      <button class="btn sub" type="button" id="btn-add-payment" onclick="addPayRow()">支払方法を追加</button>
       <button class="btn" id="btn-do-split">この内容で登録</button>
       <button class="btn sub" type="button" onclick="closeSettleModal()">閉じる</button>
     </div>
@@ -393,17 +400,158 @@ function buildMethodSelect(){
 
 function addPayRow(){
   const row = document.createElement('div'); row.className = 'pay-row';
+  row.style.display = 'flex';
+  row.style.flexDirection = 'column';
+  row.style.gap = '8px';
+  row.style.marginBottom = '12px';
+  
   const sel = buildMethodSelect(); sel.required = true;
   const input = document.createElement('input'); input.type='number'; input.min='1'; input.step='1'; input.placeholder='金額（例：1000）';
   const del = document.createElement('button'); del.type='button'; del.className='btn sub'; del.textContent='×'; del.onclick=()=>{ row.remove(); updateRemainingHint(); };
-  input.addEventListener('input', updateRemainingHint);
-  row.appendChild(sel); row.appendChild(input); row.appendChild(del);
+  
+  // 支払い方法と金額の行
+  const topRow = document.createElement('div');
+  topRow.style.display = 'flex';
+  topRow.style.gap = '8px';
+  topRow.style.alignItems = 'center';
+  
+  // おつり表示用の要素（現金でおつりが出る場合のみ表示）
+  const changeLabel = document.createElement('div');
+  changeLabel.style.fontSize = '1.1em';
+  changeLabel.style.fontWeight = 'bold';
+  changeLabel.style.color = '#059669';
+  changeLabel.style.padding = '8px';
+  changeLabel.style.backgroundColor = '#f0fdf4';
+  changeLabel.style.borderRadius = '4px';
+  changeLabel.style.marginTop = '4px';
+  changeLabel.style.display = 'none';
+  changeLabel.className = 'change-display';
+  
+  // 支払い方法が変更されたらおつり表示を更新
+  sel.addEventListener('change', ()=>{
+    updateAllCalculations();
+  });
+  
+  // この行のおつり計算関数
+  function calculateChange() {
+    const amount = Number(input.value || 0);
+    const selectedMethod = _settle_ctx.methods.find(m => m.id == sel.value);
+    const isCash = selectedMethod && (selectedMethod.code === 'CASH' || selectedMethod.name.includes('現金'));
+    
+    // カードなどの場合はおつり表示なし
+    if (!isCash) {
+      changeLabel.style.display = 'none';
+      changeLabel.textContent = '';
+      return;
+    }
+    
+    if (amount > 0) {
+      // 入力済みの合計を計算
+      const enteredSum = calcEnteredSum();
+      const totalAmount = _settle_ctx.remaining || _settle_ctx.total || 0;
+      const change = enteredSum - totalAmount;
+      
+      // おつりが出る場合のみ表示（不足は最下部に表示）
+      if (change > 0) {
+        changeLabel.style.display = 'block';
+        changeLabel.textContent = `おつり: ¥${change.toLocaleString()}`;
+        changeLabel.style.color = '#059669';
+        changeLabel.style.backgroundColor = '#f0fdf4';
+      } else {
+        changeLabel.style.display = 'none';
+        changeLabel.textContent = '';
+      }
+    } else {
+      changeLabel.style.display = 'none';
+      changeLabel.textContent = '';
+    }
+  }
+  
+  // 金額が変更されたらおつりを計算
+  input.addEventListener('input', ()=>{
+    updateRemainingHint();
+    updateAllCalculations();
+  });
+  
+  topRow.appendChild(sel);
+  topRow.appendChild(input);
+  topRow.appendChild(del);
+  
+  row.appendChild(topRow);
+  row.appendChild(changeLabel);
   document.getElementById('pay-rows').appendChild(row);
+  
+  // 削除ボタンにも再計算を追加
+  del.onclick = () => {
+    row.remove();
+    updateRemainingHint();
+    updateAllCalculations();
+  };
+  
+  // 初期表示時に現金が選択されている場合もおつりを計算
+  setTimeout(() => {
+    updateAllCalculations();
+  }, 0);
+  
   updateRemainingHint();
 }
 
+  // 全体のおつり/不足計算とボタン制御
+function updateAllCalculations() {
+  // 各行のおつり表示を非表示に（最下部に統一表示するため）
+  const rows = document.querySelectorAll('#pay-rows .pay-row');
+  rows.forEach(row => {
+    const changeLabel = row.querySelector('.change-display');
+    if (changeLabel) {
+      changeLabel.style.display = 'none';
+      changeLabel.textContent = '';
+    }
+  });
+  
+  // 不足/おつり表示を最下部に更新
+  const enteredSum = calcEnteredSum();
+  const totalAmount = _settle_ctx.remaining || _settle_ctx.total || 0;
+  const diff = enteredSum - totalAmount;
+  const shortageDisplay = document.getElementById('shortage-display');
+  const addButton = document.getElementById('btn-add-payment');
+  
+  if (diff < 0) {
+    // 不足がある場合
+    shortageDisplay.style.display = 'block';
+    shortageDisplay.style.background = '#fef2f2';
+    shortageDisplay.style.borderColor = '#dc2626';
+    shortageDisplay.style.color = '#dc2626';
+    shortageDisplay.textContent = `不足: ¥${Math.abs(diff).toLocaleString()}`;
+  } else if (diff > 0) {
+    // おつりがある場合
+    shortageDisplay.style.display = 'block';
+    shortageDisplay.style.background = '#f0fdf4';
+    shortageDisplay.style.borderColor = '#16a34a';
+    shortageDisplay.style.color = '#16a34a';
+    shortageDisplay.textContent = `おつり: ¥${diff.toLocaleString()}`;
+  } else {
+    // ちょうどの場合
+    shortageDisplay.style.display = 'none';
+    shortageDisplay.textContent = '';
+  }
+  
+  // おつりが出る場合は支払い追加ボタンを無効化
+  if (diff > 0) {
+    addButton.disabled = true;
+    addButton.title = 'おつりが出るため、支払いを追加できません';
+    addButton.style.opacity = '0.5';
+    addButton.style.cursor = 'not-allowed';
+  } else {
+    addButton.disabled = false;
+    addButton.title = '';
+    addButton.style.opacity = '1';
+    addButton.style.cursor = 'pointer';
+  }
+}
+
 function calcEnteredSum(){
-  return Array.from(document.querySelectorAll('#pay-rows input[type="number"]'))
+  const inputs = Array.from(document.querySelectorAll('#pay-rows input[type="number"]'));
+  return inputs
     .reduce((a, el)=> a + Number(el.value||0), 0);
 }
 
@@ -447,7 +595,22 @@ async function doSplitSettle(){
   }
 
   const enteredSum = payments.reduce((a,p)=>a+p.amount,0);
-  if(enteredSum > _settle_ctx.remaining){ alert('入力金額の合計が残額を超えています。'); return; }
+  
+  // 現金以外の支払い金額の合計を計算
+  let nonCashSum = 0;
+  for(const p of payments){
+    const method = _settle_ctx.methods.find(m => m.id == p.method_id);
+    const isCash = method && (method.code === 'CASH' || method.name.includes('現金'));
+    if(!isCash){
+      nonCashSum += p.amount;
+    }
+  }
+  
+  // 現金以外（カード、電子マネー、クーポンなど）は合計金額を超えて登録不可
+  if(nonCashSum > _settle_ctx.total){ 
+    alert('カード、電子マネー、クーポンなどの支払いは合計金額を超えて登録できません。'); 
+    return; 
+  }
 
   try{
     const r = await fetch(`/admin/settle/${_settle_ctx.table_id}/pay`, {

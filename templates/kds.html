@@ -22,14 +22,28 @@
   </div>
 </div>
 <style>
-  .cat-btn{ padding:6px 10px; border:1px solid #d1d5db; border-radius:8px; background:#fff; cursor:pointer; }
+  /* ★ KDS画面全体を使うスタイル */
+  body { font-size: 18px; }
+  main { max-width: 100% !important; margin: 12px !important; padding: 0 12px !important; }
+  h2 { font-size: 28px; margin-bottom: 16px; }
+  
+  .cat-btn{ padding:10px 16px; border:1px solid #d1d5db; border-radius:8px; background:#fff; cursor:pointer; font-size:16px; }
   .cat-btn.active{ background:#2563eb; color:#fff; border-color:#1d4ed8; }
   .cat-btn.all{ font-weight:600; }
 
-  /* ▼ KDS 行の操作UI */
-  .ops{ display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
-  .ops .count-wrap{ display:inline-flex; gap:6px; align-items:center; }
-  .ops .count-input{ width:72px; padding:4px 6px; }
+  /* ★ テーブルのスタイルを大きく */
+  #kds-table { width: 100%; font-size: 18px; }
+  #kds-table th { font-size: 20px; padding: 14px 12px; background: #f3f4f6; font-weight: 700; }
+  #kds-table td { padding: 16px 12px; font-size: 18px; }
+  #kds-table tbody tr:hover { background: #f9fafb; }
+  
+  /* ★ KDS 行の操作UI */
+  .ops{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .ops button { padding: 12px 18px; font-size: 16px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; cursor: pointer; font-weight: 600; }
+  .ops button:hover { background: #f3f4f6; }
+  .ops .count-wrap{ display:inline-flex; gap:8px; align-items:center; }
+  .ops .count-input{ width:80px; padding:8px 10px; font-size:16px; }
+  .ops .small { font-size: 14px; }
 </style>
 <!-- ▲ -->
 
@@ -53,6 +67,53 @@ const EDIT_LOCK_MS = 5000;
 let refreshPauseUntil = 0;
 function pauseRefresh(ms){ refreshPauseUntil = Math.max(refreshPauseUntil, Date.now() + (ms||EDIT_LOCK_MS)); }
 function canRefresh(){ return Date.now() >= refreshPauseUntil; }
+
+/* ====== 一括操作関数 ====== */
+async function bulkCooking(itemIdsStr) {
+  if (!confirm('選択した注文を一括で「調理中」にしますか？')) return;
+  const itemIds = itemIdsStr.split(',').map(id => parseInt(id, 10));
+  for (const itemId of itemIds) {
+    await chgById(itemId, '調理中', 1);
+  }
+  fetchAndUpdateKds(false);
+}
+
+async function bulkServed(itemIdsStr) {
+  if (!confirm('選択した注文を一括で「提供済」にしますか？')) return;
+  const itemIds = itemIdsStr.split(',').map(id => parseInt(id, 10));
+  for (const itemId of itemIds) {
+    await chgById(itemId, '提供済', 1);
+  }
+  fetchAndUpdateKds(false);
+}
+
+async function bulkCancel(itemIdsStr) {
+  if (!confirm('選択した注文を一括で「取消」にしますか？')) return;
+  const itemIds = itemIdsStr.split(',').map(id => parseInt(id, 10));
+  for (const itemId of itemIds) {
+    await chgById(itemId, '取消', 1);
+  }
+  fetchAndUpdateKds(false);
+}
+
+async function chgById(itemId, st, count) {
+  try {
+    const url = `/api/order_item/${itemId}/status`;
+    const body = JSON.stringify({ status: st, count: count });
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: body
+    });
+    const data = await response.json();
+    if (DEBUG_KDS) console.log(`[KDS CHG] id=${itemId} st=${st} count=${count}`, data);
+    if (!response.ok || !data.ok) {
+      console.error('KDS change status failed', data);
+    }
+  } catch (e) {
+    console.error('chgById failed:', e);
+  }
+}
 
 /* ====== 状態変更（count 対応） ====== */
 async function chg(key, itemId, st){
@@ -241,39 +302,94 @@ async function fetchAndUpdateKds(triggerSoundOnNew = true){
       currentIds.forEach(id => { if (!knownIds.has(id)) newIds.push(id); });
     }
 
-    data.items.forEach((item) => {
-      const rowKey = String(item.id); // id固定
-      const tr = document.createElement('tr');
-      tr.setAttribute('data-key', rowKey);
+    // ★ order_idごとにグルーピング
+    const orderGroups = new Map();
+    data.items.forEach(item => {
+      if (!orderGroups.has(item.order_id)) {
+        orderGroups.set(item.order_id, []);
+      }
+      orderGroups.get(item.order_id).push(item);
+    });
 
-      const absQty = Math.abs(Number(item.qty || 0));
-      const defaultCount = draft.has(rowKey) ? draft.get(rowKey) : String(absQty);
+    // ★ 各注文グループを表示
+    let isFirstGroup = true;
+    orderGroups.forEach((items, orderId) => {
+      // 区切り行（最初のグループ以外）
+      if (!isFirstGroup) {
+        const spacerTr = document.createElement('tr');
+        spacerTr.className = 'order-separator';
+        spacerTr.innerHTML = '<td colspan="8" style="height:12px; background:#f3f4f6; border-top:2px solid #d1d5db; border-bottom:2px solid #d1d5db;"></td>';
+        tbody.appendChild(spacerTr);
+      }
+      isFirstGroup = false;
 
-      tr.innerHTML = `
-        <td>${item.id}</td>
-        <td>${item.table_no}</td>
-        <td>${item.ordered_time || ''}</td>  <!-- ★ 新規: 時刻（HH:MM） -->
-        <td>${item.name}</td>
-        <td>${item.qty}</td>
-        <td>${item.memo || ''}</td>
-        <td>${item.status}</td>
-        <td>
-          <div class="ops">
-            <button type="button" onclick="chg('${rowKey}', ${item.id}, '調理中')">調理中</button>
-            <button type="button" onclick="chg('${rowKey}', ${item.id}, '提供済')">提供済</button>
-            <button type="button" onclick="chg('${rowKey}', ${item.id}, '取消')">取消</button>
-
-            ${absQty >= 2 ? `
-              <span class="count-wrap">
-                <span class="small muted">個数</span>
-                <input type="number" class="js-count count-input"
-                       min="1" max="${absQty}" value="${defaultCount}">
-              </span>
-            ` : ''}
+      // ★ 一括操作ボタン行を挿入
+      const bulkTr = document.createElement('tr');
+      bulkTr.style.cssText = 'background:#fef3c7; border-top:2px solid #f59e0b; border-bottom:1px solid #f59e0b;';
+      const tableNo = items[0].table_no;
+      const orderedTime = items[0].ordered_time || '';
+      const itemIds = items.map(it => it.id).join(',');
+      bulkTr.innerHTML = `
+        <td colspan="3" style="font-weight:700; padding:12px;">
+          テーブル: ${tableNo} | 注文時刻: ${orderedTime}
+        </td>
+        <td colspan="5" style="padding:12px;">
+          <div style="display:flex; gap:12px; align-items:center;">
+            {% if use_cooking_status %}
+            <button type="button" onclick="bulkCooking('${itemIds}')" 
+                    style="padding:10px 20px; background:#3b82f6; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:600; font-size:16px;">
+              👨‍🍳 一括調理中
+            </button>
+            {% endif %}
+            <button type="button" onclick="bulkServed('${itemIds}')" 
+                    style="padding:10px 20px; background:#10b981; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:600; font-size:16px;">
+              ✅ 一括提供済
+            </button>
+            <button type="button" onclick="bulkCancel('${itemIds}')" 
+                    style="padding:10px 20px; background:#ef4444; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:600; font-size:16px;">
+              ❌ 一括取消
+            </button>
+            <span style="color:#92400e; font-size:14px;">${items.length}件</span>
           </div>
         </td>
       `;
-      tbody.appendChild(tr);
+      tbody.appendChild(bulkTr);
+
+      // ★ 各明細行
+      items.forEach((item, index) => {
+        const rowKey = String(item.id);
+        const tr = document.createElement('tr');
+        tr.setAttribute('data-key', rowKey);
+
+        const absQty = Math.abs(Number(item.qty || 0));
+        const defaultCount = draft.has(rowKey) ? draft.get(rowKey) : String(absQty);
+
+        tr.innerHTML = `
+          <td>${item.id}</td>
+          <td>${item.table_no}</td>
+          <td>${item.ordered_time || ''}</td>
+          <td>${item.name}</td>
+          <td>${item.qty}</td>
+          <td>${item.memo || ''}</td>
+          <td>${item.status}</td>
+          <td>
+            <div class="ops">
+              <button type="button" onclick="chg('${rowKey}', ${item.id}, '調理中')">調理中</button>
+              <button type="button" onclick="chg('${rowKey}', ${item.id}, '提供済')">提供済</button>
+              <button type="button" onclick="chg('${rowKey}', ${item.id}, '取消')">取消</button>
+
+              ${absQty >= 2 ? `
+                <span class="count-wrap">
+                  <span class="small muted">個数</span>
+                  <input type="number" class="js-count count-input"
+                         min="1" max="${absQty}" value="${defaultCount}">
+                </span>
+              ` : ''}
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
     });
 
     knownIds = currentIds;
@@ -298,10 +414,7 @@ async function fetchAndUpdateKds(triggerSoundOnNew = true){
   }
 }
 
-/* ====== 店員呼び出し音声再生 ====== */
-const staffCallAudio = new Audio('{{ url_for("static", filename="sounds/customer_is_calling.mp3") }}');
-staffCallAudio.preload = 'auto';
-
+/* ====== 音声設定 ====== */
 let soundEnabled = true;
 const soundToggle = document.getElementById('sound-toggle');
 if (soundToggle) {
@@ -310,6 +423,28 @@ if (soundToggle) {
     if (DEBUG_KDS) console.log('[KDS SOUND]', soundEnabled ? 'enabled' : 'disabled');
   });
 }
+
+/* ====== 注文通知音声再生 ====== */
+const notifyAudio = new Audio('{{ url_for("static", filename="sounds/customer_is_calling.mp3") }}');
+notifyAudio.preload = 'auto';
+
+window.playNotify = async function(){
+  if (!soundEnabled) {
+    if (DEBUG_KDS) console.log('[KDS SOUND] notify sound disabled');
+    return;
+  }
+  try{
+    notifyAudio.currentTime = 0;
+    await notifyAudio.play();
+    if (DEBUG_KDS) console.log('[KDS SOUND] notify played');
+  }catch(err){
+    console.warn('[KDS SOUND] playNotify failed:', err);
+  }
+};
+
+/* ====== 店員呼び出し音声再生 ====== */
+const staffCallAudio = new Audio('{{ url_for("static", filename="sounds/customer_is_calling.mp3") }}');
+staffCallAudio.preload = 'auto';
 
 window.playStaffCall = async function(){
   if (!soundEnabled) {

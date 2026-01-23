@@ -619,59 +619,117 @@ document.addEventListener('DOMContentLoaded', () => {
   // ▼ 親カテゴリ配下のメニュー統合（公開でも非表示にしない）
   async function loadMenusForParent(parentId){
     if (!menuGrid) return;
+    
+    // キャッシュキーを生成
+    const cacheKey = `parent_${parentId}`;
+    
+    // キャッシュがあれば即座に表示
+    if (categoryMenuCache.has(cacheKey)){
+      const cached = categoryMenuCache.get(cacheKey);
+      cached.length ? renderMenus(cached)
+                    : (menuGrid.innerHTML = '<div class="card">メニューがありません。</div>');
+      return;
+    }
+    
+    // 前のリクエストをキャンセル
+    if (menusAbortCtrl) menusAbortCtrl.abort();
+    menusAbortCtrl = new AbortController();
+    const { signal } = menusAbortCtrl;
+    
     const leafIds = [parentId, ...getDescendantLeafIds(parentId)];
     if (!leafIds.length) return;
     menuGrid.innerHTML = '<div class="loading">読み込み中...</div>';
-    const seen = new Set();
-       const merged = [];
-    for (const cid of leafIds){
-      try{
-        const data = await fetchJSON(`/api/menus/by_category/${cid}${qrToken ? '?token=' + qrToken : ''}`);
-        const arr = Array.isArray(data?.menus) ? data.menus : [];
-        for (const m of arr){
+    
+    // 一括取得APIを使用
+    try{
+      const data = await fetchJSON(`/api/menus/by_categories?category_ids=${leafIds.join(',')}${qrToken ? '&token=' + qrToken : ''}`, { signal });
+      if (signal.aborted) return;
+      
+      const seen = new Set();
+      const merged = [];
+      
+      // 各カテゴリのメニューを統合
+      for (const cid of leafIds){
+        const menus = data?.categories?.[cid] || [];
+        for (const m of menus){
           if (seen.has(m.id)) continue;
           seen.add(m.id);
-          merged.push(m); // available=0 も含めて渡す
+          merged.push(m);
         }
-      }catch(e){
-        console.warn('load category failed', cid, e);
       }
+      
+      // キャッシュに保存
+      categoryMenuCache.set(cacheKey, merged);
+      
+      if (signal.aborted) return;
+      if (!merged.length){
+        menuGrid.innerHTML = '<div class="card">メニューがありません。</div>';
+        return;
+      }
+      renderMenus(merged);
+    }catch(e){
+      if (signal.aborted) return;
+      console.error('load menus for parent failed', e);
+      menuGrid.innerHTML = '<div class="loading">メニューの読み込み中にエラーが発生しました。</div>';
     }
-    if (!merged.length){
-      menuGrid.innerHTML = '<div class="card">メニューがありません。</div>';
-      return;
-    }
-    renderMenus(merged);
   }
 
   // ▼ 「すべて」表示（公開でも非表示にしない）
   async function loadAllMenusByCategoryOrder(){
     if (!menuGrid) return;
+    
+    // キャッシュキー
+    const cacheKey = 'all_menus';
+    
+    // キャッシュがあれば即座に表示
+    if (categoryMenuCache.has(cacheKey)){
+      const cached = categoryMenuCache.get(cacheKey);
+      cached.length ? renderMenus(cached)
+                    : (menuGrid.innerHTML='<div class="card">メニューがありません。</div>');
+      return;
+    }
+    
+    // 前のリクエストをキャンセル
+    if (menusAbortCtrl) menusAbortCtrl.abort();
+    menusAbortCtrl = new AbortController();
+    const { signal } = menusAbortCtrl;
+    
     menuGrid.innerHTML='<div class="loading">読み込み中...</div>';
 
     const leafIds = getOrderedLeafCategoryIds();
-    const seen = new Set();
-    const merged = [];
-
-    for (const cid of leafIds){
-      try{
-        const data = await fetchJSON(`/api/menus/by_category/${cid}${qrToken ? '?token=' + qrToken : ''}`);
-        const arr = Array.isArray(data?.menus) ? data.menus : [];
-        for (const m of arr){
+    
+    // 一括取得APIを使用
+    try{
+      const data = await fetchJSON(`/api/menus/by_categories?category_ids=${leafIds.join(',')}${qrToken ? '&token=' + qrToken : ''}`, { signal });
+      if (signal.aborted) return;
+      
+      const seen = new Set();
+      const merged = [];
+      
+      // 各カテゴリのメニューを統合
+      for (const cid of leafIds){
+        const menus = data?.categories?.[cid] || [];
+        for (const m of menus){
           if (seen.has(m.id)) continue;
           seen.add(m.id);
-          merged.push(m); // available=0 も含めて渡す
+          merged.push(m);
         }
-      }catch(e){
-        console.warn('load category failed', cid, e);
       }
-    }
 
-    if (!merged.length){
-      menuGrid.innerHTML='<div class="card">メニューがありません。</div>';
-      return;
+      // キャッシュに保存
+      categoryMenuCache.set(cacheKey, merged);
+
+      if (signal.aborted) return;
+      if (!merged.length){
+        menuGrid.innerHTML='<div class="card">メニューがありません。</div>';
+        return;
+      }
+      renderMenus(merged);
+    }catch(e){
+      if (signal.aborted) return;
+      console.error('load all menus failed', e);
+      menuGrid.innerHTML='<div class="loading">メニューの読み込み中にエラーが発生しました。</div>';
     }
-    renderMenus(merged);
   }
 
   // “すべて”のpillは残す。クリックはデリゲーションで処理
@@ -700,10 +758,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // ===== メニュー取得（AbortController + fetchJSON） =====
+  // ===== メニュー取得（AbortController + fetchJSON + キャッシュ） =====
   let menusAbortCtrl = null;
   const __menuMap = new Map();
   window.__menuMap = __menuMap;  // グローバル変数として設定
+  
+  // カテゴリ別メニューキャッシュ
+  const categoryMenuCache = new Map();
 
   async function loadMenus(categoryId){
     if (!menuGrid) return;
@@ -711,6 +772,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // 「すべて」は専用ロジック
     if (String(categoryId) === '0'){
       return loadAllMenusByCategoryOrder();
+    }
+
+    // キャッシュがあれば即座に表示
+    if (categoryMenuCache.has(categoryId)){
+      const cached = categoryMenuCache.get(categoryId);
+      cached.length ? renderMenus(cached)
+                    : (menuGrid.innerHTML='<div class="card">メニューがありません。</div>');
+      return;
     }
 
     if (menusAbortCtrl) menusAbortCtrl.abort();
@@ -722,6 +791,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const data = await fetchJSON(`/api/menus/by_category/${categoryId}${qrToken ? '?token=' + qrToken : ''}`, { signal });
       if (signal.aborted) return;
       const list = (data?.menus || []); // available=0 も含めて渡す
+      
+      // キャッシュに保存
+      categoryMenuCache.set(categoryId, list);
+      
       list.length ? renderMenus(list)
                   : (menuGrid.innerHTML='<div class="card">メニューがありません。</div>');
     }catch(e){
@@ -1139,6 +1212,45 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   fetchCustStatus();
   loadCurrentDetail();
+  
+  // ===== バックグラウンドで全メニューをプリロード =====
+  // 初回クリック時の読み込み時間を短縮
+  (async function preloadAllMenus(){
+    try{
+      const leafIds = getOrderedLeafCategoryIds();
+      if (!leafIds || leafIds.length === 0) return;
+      
+      // バックグラウンドで取得（ユーザーの操作をブロックしない）
+      const data = await fetchJSON(`/api/menus/by_categories?category_ids=${leafIds.join(',')}${qrToken ? '&token=' + qrToken : ''}`);
+      
+      // 各カテゴリをキャッシュに保存
+      for (const cid of leafIds){
+        const menus = data?.categories?.[cid] || [];
+        if (menus.length > 0){
+          categoryMenuCache.set(String(cid), menus);
+        }
+      }
+      
+      // 「すべて」のキャッシュも作成
+      const seen = new Set();
+      const merged = [];
+      for (const cid of leafIds){
+        const menus = data?.categories?.[cid] || [];
+        for (const m of menus){
+          if (seen.has(m.id)) continue;
+          seen.add(m.id);
+          merged.push(m);
+        }
+      }
+      if (merged.length > 0){
+        categoryMenuCache.set('all_menus', merged);
+      }
+      
+      console.log('[PRELOAD] 全メニューをキャッシュしました:', leafIds.length, 'カテゴリ,', merged.length, 'メニュー');
+    }catch(e){
+      console.warn('[PRELOAD] プリロード失敗:', e);
+    }
+  })();
   
   // ===== スマホ表示：注文カゴの折りたたみ機能 =====
   if (window.innerWidth <= 900) {

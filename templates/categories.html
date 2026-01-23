@@ -1,8 +1,44 @@
 {% extends "base.html" %}
+{% block head_extra %}
+<style>
+  /* ★ 画面全体を使うスタイル */
+  body { font-size: 16px; }
+  main { max-width: 100% !important; margin: 24px auto !important; padding: 0 24px !important; }
+  h2 { font-size: 26px; margin-bottom: 20px; margin-top: 0; }
+  
+  /* 2カラムレイアウト */
+  .two-column-layout {
+    display: grid;
+    grid-template-columns: 350px 1fr;
+    gap: 32px;
+  }
+  
+  /* テーブルのスタイルを調整 */
+  table { width: 100%; font-size: 15px; table-layout: fixed; }
+  th { font-size: 16px; padding: 12px 10px; background: #f3f4f6; font-weight: 700; }
+  td { padding: 12px 10px; font-size: 15px; }
+  tbody tr:hover { background: #f9fafb; }
+  
+  /* 列幅の調整 */
+  th:nth-child(1), td:nth-child(1) { width: 80px; } /* # */
+  th:nth-child(2), td:nth-child(2) { width: 300px; } /* 名称 */
+  th:nth-child(3), td:nth-child(3) { width: 180px; } /* 親 */
+  th:nth-child(4), td:nth-child(4) { width: 120px; } /* 表示順 */
+  th:nth-child(5), td:nth-child(5) { width: 180px; white-space: nowrap; } /* KDS判定グループ */
+  th:nth-child(6), td:nth-child(6) { width: 80px; } /* 有効 */
+  th:nth-child(7), td:nth-child(7) { width: auto; min-width: 320px; } /* 操作 */
+  
+  /* 操作列のボタンを折り返さない */
+  .actions { white-space: nowrap; }
+  
+  /* カードのスタイル調整 */
+  .card { padding: 24px; }
+</style>
+{% endblock %}
 {% block content %}
 <h2>カテゴリ管理</h2>
 
-<div class="grid" style="grid-template-columns:360px 1fr">
+<div class="two-column-layout">
   <!-- 新規登録 -->
   <div class="card">
     <h3>新規カテゴリ</h3>
@@ -35,12 +71,13 @@
     <table>
       <thead>
         <tr>
-          <th style="width:64px">#</th>
+          <th>#</th>
           <th>名称</th>
-          <th style="width:140px">親</th>
-          <th style="width:96px">表示順</th>
-          <th style="width:72px">有効</th>
-          <th style="width:220px">操作</th>
+          <th>親</th>
+          <th>表示順</th>
+          <th>KDS判定グループ</th>
+          <th>有効</th>
+          <th>操作</th>
         </tr>
       </thead>
       <tbody>
@@ -50,6 +87,7 @@
             <td>{{ ("&nbsp;&nbsp;" * ((c['depth']|int) - 1)) | safe }}{{ c['名称'] }}</td>
             <td>{{ c['親'] or '-' }}</td>
             <td>{{ c['表示順'] }}</td>
+            <td><span class="small">{{ c['KDS判定グループ'] }}</span></td>
             <td>{{ '◯' if c['有効']==1 else '×' }}</td>
             <td>
               <div class="actions">
@@ -65,7 +103,7 @@
           </tr>
         {% endfor %}
         {% if not cats %}
-          <tr><td colspan="6" class="small">カテゴリはまだありません。</td></tr>
+          <tr><td colspan="7" class="small">カテゴリはまだありません。</td></tr>
         {% endif %}
       </tbody>
     </table>

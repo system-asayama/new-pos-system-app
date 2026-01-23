@@ -424,8 +424,13 @@ def get_db_session():
         # セッションをクローズ
         try:
             session.close()
+            # scoped_sessionのクリーンアップを追加
+            if MULTI_TENANT_MODE == "shared":
+                SessionLocal.remove()
+            else:
+                scoped.remove()
         except Exception as close_error:
-            app.logger.error(f"[DB] Session close failed: {close_error}")
+            app.logger.error(f"[DB] Session cleanup failed: {close_error}")
 
 # --- [Flask] リクエスト後のクリーンアップ ---------------------------------------------
 @app.teardown_appcontext
@@ -700,6 +705,7 @@ def ensure_store_id_in_master(store_code: str, store_name: str = None) -> int:
         raise
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 次の店舗IDの採番取得 -----------------------------------------------------
@@ -711,6 +717,7 @@ def get_next_store_id() -> int:
         return (max_id or 0) + 1
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 店舗IDの有効性検証（有効フラグ=1で存在するか） ---------------------------
@@ -726,6 +733,7 @@ def validate_store_id(store_id: int) -> bool:
         return store is not None
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 店舗スコーピング保証（列追加＆最小バックフィル）※冪等 --------------------
@@ -846,6 +854,7 @@ def is_store_admin_or_higher() -> bool:
         return exists is not None
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- SELECT時のテナント自動フィルタ（sysadmin は免除） ---------------------------
@@ -1385,6 +1394,12 @@ class Store(TenantScoped, Base):
     # 0 の場合は PIN 入力をスキップし、最初の来店客以外も自動的に注文に参加できます。
     # デフォルトは 1 (必須) としており、従来の動作との後方互換を維持します。
     require_join_pin = Column("合流PIN必須", Integer, nullable=False, default=1)
+    
+    # --- 調理中ステータス使用フラグ -----------------------------------------------------------
+    # このフラグが 1 の場合、「調理中」ステータスを使用します。
+    # 0 の場合は、KDS画面や明細画面で「調理中」ボタンを非表示にします。
+    # デフォルトは 1 (使用する) としており、従来の動作を維持します。
+    use_cooking_status = Column("調理中ステータス使用", Integer, nullable=False, default=1)
 
     # --- レシート・領収書用情報 -----------------------------------------------------------
     address = Column("住所", Text, nullable=True)  # 店舗の住所
@@ -1457,6 +1472,7 @@ class Menu(TenantScoped, Base):
     tax_rate = Column("税率", Float, nullable=False, default=0.10)     # フォールバック税率
     is_market_price = Column("時価", Integer, nullable=False, default=0)  # 0=通常価格, 1=時価
     display_order = Column("表示順", Integer, nullable=False, default=0)
+    kds_judgment_group = Column("KDS判定グループ", String)  # ★ メニュー個別のKDS判定グループ
     created_at = Column("作成日時", String, nullable=False, default=now_str)
     updated_at = Column("更新日時", String, nullable=False, default=now_str)
     store = relationship("Store")
@@ -1552,6 +1568,7 @@ class Category(TenantScoped, Base):
     name = Column("名称", String, nullable=False)
     display_order = Column("表示順", Integer, default=0)
     active = Column("有効", Integer, nullable=False, default=1)
+    kds_judgment_group = Column("KDS判定グループ", String)  # ★ 新規・追加判定用グループ
     created_at = Column("作成日時", String, nullable=False, default=now_str)
     updated_at = Column("更新日時", String, nullable=False, default=now_str)
     store = relationship("Store")
@@ -1607,6 +1624,7 @@ class PaymentMethod(TenantScoped, Base):
     store_id = Column("店舗ID", Integer, ForeignKey("M_店舗.id", ondelete="CASCADE"), nullable=False)
     code = Column("コード", String, nullable=False)  # 例: CASH / CARD / QR / IC
     name = Column("名称", String, nullable=False)                 # 表示名
+    category = Column("カテゴリ", String, nullable=False, default="payment")  # payment:支払い, discount:値引き
     active = Column("有効", Integer, nullable=False, default=1)
     display_order = Column("表示順", Integer, nullable=False, default=0)
     created_at = Column("作成日時", String, nullable=False, default=now_str)
@@ -1628,6 +1646,7 @@ class PaymentRecord(TenantScoped, Base):
     paid_at = Column("支払日時", String, nullable=False, default=now_str)
     note = Column("メモ", Text)
     store = relationship("Store")
+    method = relationship("PaymentMethod")
 
 
 # --- [モデル] 商品オプション（ProductOption） -------------------------------------------
@@ -2011,6 +2030,18 @@ def migrate_schema_if_needed():
     tables = set(insp.get_table_names())
 
     with eng.begin() as conn:
+        # T_商品カテゴリの不足カラム
+        if "T_商品カテゴリ" in tables:
+            cols = {c["name"] for c in insp.get_columns("T_商品カテゴリ")}
+            if "KDS判定グループ" not in cols:
+                conn.exec_driver_sql('ALTER TABLE "T_商品カテゴリ" ADD COLUMN "KDS判定グループ" VARCHAR(50)')
+        
+        # M_メニューの不足カラム
+        if "M_メニュー" in tables:
+            cols = {c["name"] for c in insp.get_columns("M_メニュー")}
+            if "KDS判定グループ" not in cols:
+                conn.exec_driver_sql('ALTER TABLE "M_メニュー" ADD COLUMN "KDS判定グループ" VARCHAR(50)')
+        
         # T_商品カテゴリ付与の不足カラム
         if "T_商品カテゴリ付与" in tables:
             cols = {c["name"] for c in insp.get_columns("T_商品カテゴリ付与")}
@@ -2032,6 +2063,8 @@ def migrate_schema_if_needed():
                 conn.exec_driver_sql('ALTER TABLE "M_店舗" ADD COLUMN "営業時間" TEXT')
             if "レシートフッター" not in cols:
                 conn.exec_driver_sql('ALTER TABLE "M_店舗" ADD COLUMN "レシートフッター" TEXT')
+            if "調理中ステータス使用" not in cols:
+                conn.exec_driver_sql('ALTER TABLE "M_店舗" ADD COLUMN "調理中ステータス使用" INTEGER NOT NULL DEFAULT 1')
 
         # 既存ロジック：主要マスター群が1つでも無ければ metadata 全体を作成
         need_new = False
@@ -2066,9 +2099,22 @@ def migrate_schema_if_needed():
                         except Exception:
                             pass
 
-        # （デバッグ）今の metadata に載っているテーブル名を一度だけログ
+        # (デバッグ)今の metadata に載っているテーブル名を一度だけログ
         try:
             current_app.logger.info(f"metadata tables = {list(Base.metadata.tables.keys())}")
+        except Exception:
+            pass
+    
+    # ★ 最後に、モデル定義とDBスキーマを比較して不足カラムを自動追加
+    try:
+        auto_add_missing_columns(eng, Base)
+        try:
+            current_app.logger.info("auto_add_missing_columns completed successfully")
+        except Exception:
+            pass
+    except Exception as e:
+        try:
+            current_app.logger.warning(f"auto_add_missing_columns failed: {e}")
         except Exception:
             pass
 
@@ -2171,16 +2217,7 @@ def auto_add_missing_columns(engine, Base):
                     except Exception:
                         pass
 
-# Execute the auto migration on startup for the shared engine if available
-try:
-    # Only perform auto migration if we have a global engine (shared mode)
-    if 'engine' in globals() and engine is not None:
-        auto_add_missing_columns(engine, Base)
-except Exception as _e:
-    try:
-        current_app.logger.warning(f"auto_add_missing_columns execution failed: {_e}")
-    except Exception:
-        pass
+# auto_add_missing_columnsはmigrate_schema_if_needed()内で実行されるため、ここでの呼び出しは不要
 
 
 
@@ -2648,6 +2685,7 @@ def trigger_print_job(order_id: int, items_to_print: list = None):
 
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 非同期印刷トリガ（コンテキスト継承して軽量スレッドで実行） -----------------
@@ -2796,6 +2834,7 @@ def _ensure_master_pk_equals_store_id(sid: int, store_name: str | None):
             s.commit()
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- ログアウト（セッション全クリア） --------------------------------------------
@@ -2949,6 +2988,7 @@ def sysadmin_login():
         return render_template("sysadmin_login.html")
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- システム管理者 初回ブートストラップ ----------------------------------------
@@ -2980,6 +3020,7 @@ def sysadmin_bootstrap():
         return render_template("sysadmin_bootstrap.html")
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- テナント管理者ログイン入口（テナント選択→正式URLへ） ----------------------
@@ -3037,6 +3078,7 @@ def tenant_admin_login():
         return render_template("tenant_admin_login.html")
     finally:
         s.close()  # コメント必須
+        SessionLocal.remove()
 
 
 # --- シス管：テナント管理者の有効化/削除/パスワード更新 -------------------------
@@ -3083,6 +3125,7 @@ def sys_tenant_admins_update(tid):
         return redirect(url_for("sys_tenant_admins", tid=tid))
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- テナント管理：店舗編集 ------------------------------------------------------
@@ -3130,6 +3173,7 @@ def tenant_store_edit(sid):
         return render_template("tenant_store_edit.html", store=st)
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- テナント管理：店舗削除 ------------------------------------------------------
@@ -3145,6 +3189,7 @@ def tenant_store_delete(sid):
         return redirect(url_for("tenant_stores"))
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 共通ヘルパ：現在の店舗IDを取得（session から int へ） ----------------------
@@ -3293,6 +3338,7 @@ def admin_login():
         return render_template("admin_login.html")
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 従業員ログイン --------------------------------------------------------------
@@ -3353,6 +3399,7 @@ def staff_login():
         return render_template("staff_login.html")
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- ログアウト ---------------------------------------------------------------
@@ -3392,6 +3439,7 @@ def bootstrap_first_store():
         return render_template("bootstrap.html")
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -3432,6 +3480,7 @@ def sys_tenants():
         return render_template("sys_tenants.html", rows=rows)
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- テナント新規作成（GET:フォーム / POST:作成） --------------------------------
@@ -3463,6 +3512,7 @@ def sys_tenants_new():
         return redirect(url_for("sys_tenants"))
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- テナント管理者の新規作成 ----------------------------------------------------
@@ -3522,6 +3572,7 @@ def sys_tenant_admins_new(tid):
         return render_template("sys_tenant_admin_new.html", tenant=t)
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- テナント管理者：自分のパスワード変更 ---------------------------------------
@@ -3550,6 +3601,7 @@ def tenant_me_resetpw():
         return redirect(url_for("tenant_portal"))
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 安全なURL判定ヘルパ --------------------------------------------------------
@@ -3624,6 +3676,7 @@ def tenant_me_edit():
         return render_template("tenant_me_edit.html", t=t, back_url=back_url)
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- テナント管理者：自分のテナントを削除（行のみ） ------------------------------
@@ -3656,6 +3709,7 @@ def tenant_me_delete():
         return redirect(url_for("login_choice"))
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- テナント管理者一覧（指定テナント） -----------------------------------------
@@ -3671,6 +3725,7 @@ def sys_tenant_admins(tid):
         return render_template("sys_tenant_admins.html", tenant=t, admins=admins)
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # -----------------------------------------------------------------------------
@@ -3715,6 +3770,7 @@ def tenant_portal():
                                stores_with_admins=stores_with_admins)
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # -----------------------------------------------------------------------------
@@ -3731,6 +3787,7 @@ def tenant_stores():
         return render_template("tenant_stores.html", rows=rows)
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 店舗新規作成（POST） --------------------------------------------------------
@@ -3754,6 +3811,7 @@ def tenant_stores_new():
         return redirect(url_for("tenant_stores"))
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 店舗管理者の新規作成（指定店舗） -------------------------------------------
@@ -3784,6 +3842,7 @@ def tenant_store_admin_new(sid):
         return render_template("tenant_store_admin_new.html", store=st)
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- テナント編集（名称・slug 更新） ---------------------------------------------
@@ -3833,6 +3892,7 @@ def sys_tenant_edit(tid):
         return render_template("sys_tenant_edit.html", t=t)
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- テナント削除（M_テナント の行のみ；配下データは残す） -----------------------
@@ -3859,6 +3919,7 @@ def sys_tenant_delete(tid):
         return redirect(url_for("sys_tenants"))
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- テナント完全削除（TenantScoped 全テーブルから該当データ一括削除） ----------
@@ -3896,6 +3957,7 @@ def sys_tenant_purge(tid):
         return redirect(url_for("sys_tenants"))
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- テナント管理者：店舗管理者の削除 -------------------------------------------
@@ -3918,6 +3980,7 @@ def tenant_store_admin_delete(sid, aid):
         return redirect(url_for("tenant_portal"))
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # -----------------------------------------------------------------------------
@@ -3934,6 +3997,7 @@ def sys_mypage():
         return render_template("sys_mypage.html", me=me)
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # -----------------------------------------------------------------------------
@@ -3950,6 +4014,7 @@ def sys_admins():
         return render_template("sys_admins.html", users=users)
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- システム管理者の追加/有効切替/削除/パスワード更新（POST） -------------------
@@ -4001,6 +4066,7 @@ def sys_admins_update():
         return redirect(url_for("sys_admins"))
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -5375,6 +5441,7 @@ def admin_mypage():
         )
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # ---------------------------------------------------------------------
@@ -5455,6 +5522,7 @@ def switch_store(store_id: int):
         return redirect(next_url)
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # ---------------------------------------------------------------------
@@ -5592,6 +5660,7 @@ def staff_mypage():
 
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -5654,6 +5723,7 @@ def admin_fix_progress_data():
         return jsonify({"ok": False, "error": str(e)}), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -5856,6 +5926,7 @@ def staff_api_order_item_status(item_id: int):
         return jsonify({"ok": False, "error": "internal error"}), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -5895,6 +5966,7 @@ def admin_console():
                 require_join_pin = store.require_join_pin
     finally:
         s.close()
+        SessionLocal.remove()
 
     tiles = [
         {"title": "店舗情報",     "desc": "レシート・領収書用の店舗情報",     "endpoint": "admin_store_info",      "emoji": "🏪"},
@@ -5944,6 +6016,9 @@ def admin_store_info():
             store.business_hours = request.form.get("営業時間", "").strip()
             store.receipt_footer = request.form.get("レシートフッター", "").strip()
             
+            # 調理中ステータス使用フラグ
+            store.use_cooking_status = 1 if request.form.get("use_cooking_status") == "1" else 0
+            
             s.commit()
             flash("店舗情報を保存しました。", "success")
             return redirect(url_for("admin_store_info"))
@@ -5955,6 +6030,7 @@ def admin_store_info():
         )
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # ★ 合流PINの ON/OFF を保存するルート ------------------------------
@@ -5979,6 +6055,7 @@ def admin_toggle_join_pin():
         flash("合流PINの設定保存に失敗しました。", "error")
     finally:
         s.close()
+        SessionLocal.remove()
 
     return redirect(url_for("admin_console"))
 
@@ -6273,6 +6350,7 @@ def admin_table_sales():
         )
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -6414,6 +6492,7 @@ def admin_order_refund(order_id):
         return jsonify({"ok": False, "error": "internal error"}), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -6641,6 +6720,7 @@ def admin_order_item_cancel(order_id, item_id):
         return jsonify({"ok": False, "error": "internal error"}), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -6876,6 +6956,7 @@ def floor():
         )
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -6989,6 +7070,7 @@ def qr_print(table_id: int):
         )
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- テーブル詳細（最新オーダー＋明細・合計の可視化） --------------------------
@@ -7022,6 +7104,10 @@ def table_detail(table_id):
 
     s = SessionLocal()
     try:
+        # 店舗情報を取得
+        store = s.get(Store, sid)
+        use_cooking_status = store.use_cooking_status if store else 1
+        
         # --- テーブル本体（店舗スコープ） ---
         q_table = s.query(TableSeat).filter(TableSeat.id == table_id)
         if hasattr(TableSeat, "store_id"):
@@ -7264,11 +7350,13 @@ def table_detail(table_id):
             csrf_token=session.get("csrf_token"),
             title=f"テーブル {getattr(table, 'table_no', table_id)}",
             is_qr_user=is_qr_user,  # QRユーザーフラグを追加
-            qr_token=token if is_qr_user else None  # QRトークンを渡す
+            qr_token=token if is_qr_user else None,  # QRトークンを渡す
+            use_cooking_status=use_cooking_status  # 調理中ステータス使用フラグ
         )
         return render_template("table_detail.html", **context)
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -7289,6 +7377,7 @@ def api_floor_tables():
         return jsonify([{"id": t.id, "no": t.table_no, "status": t.status} for t in rows])
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- KDS 画面（キッチン表示） -------------------------------------------------
@@ -7301,6 +7390,10 @@ def kds():
 
     s = SessionLocal()
     try:
+        # 店舗情報を取得
+        store = s.get(Store, sid)
+        use_cooking_status = store.use_cooking_status if store else 1
+        
         rows = (
             s.query(
                 OrderItem.id.label("id"),
@@ -7320,9 +7413,10 @@ def kds():
             .all()
         )
         rows_dict = [dict(r._mapping) for r in rows]
-        return render_template("kds.html", title="KDS", rows=rows_dict)
+        return render_template("kds.html", title="KDS", rows=rows_dict, use_cooking_status=use_cooking_status)
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- KDS API：アイテム一覧（カテゴリ絞り込み対応） -----------------------------
@@ -7348,6 +7442,7 @@ def kds_api_get_items():
             current_app.logger.debug("[KDS] sid=%s raw_cat_ids=%r -> cat_ids=%r", sid, raw, cat_ids)
 
         # ベース抽出（元行のみ：qty>0。明細.statusは見ない）
+        # ★ KDS判定グループを取得するためにカテゴリ情報をJOIN
         q = (
             s.query(
                 OrderItem.id.label("id"),
@@ -7358,6 +7453,7 @@ def kds_api_get_items():
                 OrderItem.memo.label("memo"),
                 OrderItem.status.label("detail_status"),
                 OrderItem.added_at.label("ordered_at"),  # ★ 注文時刻
+                Menu.id.label("menu_id"),  # ★ メニューIDを追加
             )
             .join(OrderHeader, OrderHeader.id == OrderItem.order_id)
             .join(TableSeat, TableSeat.id == OrderHeader.table_id)
@@ -7389,7 +7485,7 @@ def kds_api_get_items():
 
             q = q.filter(OrderItem.menu_id.in_(menu_ids))
 
-        rows = q.order_by(OrderItem.id.desc()).all()
+        rows = q.order_by(OrderItem.id.asc()).all()  # ★ 古い注文が上、新しい注文が下に表示
         if DEBUG:
             current_app.logger.debug("[KDS] base rows=%d ids(sample)=%r",
                                      len(rows), [r.id for r in rows[:10]])
@@ -7485,8 +7581,127 @@ def kds_api_get_items():
         if seeded and DEBUG:
             current_app.logger.debug("[KDS] progress seeded item_ids=%r", seeded)
 
-        # アイテム構築
+        # アイトム構築
         from datetime import datetime, timedelta, timezone  # ★ JST 変換用
+
+        # ★ メニューIDからKDS判定グループを取得（優先順位: メニュー > 下位カテゴリ > 親カテゴリ）
+        menu_id_list = [r.menu_id for r in rows]
+        menu_to_group = {}  # menu_id -> kds_judgment_group
+        if menu_id_list:
+            # メニューごとにグループを探す
+            for menu_id in set(menu_id_list):
+                # 1. メニュー自体に設定があれば最優先
+                menu = s.get(Menu, menu_id)
+                if menu:
+                    try:
+                        menu_group = getattr(menu, 'kds_judgment_group', None)
+                        if menu_group:
+                            menu_to_group[menu_id] = menu_group
+                            continue
+                    except Exception:
+                        pass  # カラムが存在しない場合はスキップ
+                
+                # 2. メニューに設定がない場合、カテゴリから探す
+                cat_links = s.query(ProductCategoryLink).filter(
+                    ProductCategoryLink.product_id == menu_id
+                ).all()
+                
+                # 各カテゴリの階層深度を計算し、最も深いものから探索
+                cat_depth_list = []  # [(category, depth), ...]
+                for link in cat_links:
+                    cat = s.get(Category, link.category_id)
+                    if not cat:
+                        continue
+                    # 階層深度を計算（親を遡ってカウント）
+                    depth = 0
+                    current = cat
+                    while current.parent_id:
+                        depth += 1
+                        current = s.get(Category, current.parent_id)
+                        if not current:
+                            break
+                    cat_depth_list.append((cat, depth))
+                
+                # 深い順（下位カテゴリ優先）にソート
+                cat_depth_list.sort(key=lambda x: x[1], reverse=True)
+                
+                # 最も深いカテゴリから順にグループを探す
+                found_group = None
+                for cat, depth in cat_depth_list:
+                    try:
+                        cat_group = getattr(cat, 'kds_judgment_group', None)
+                        if cat_group:
+                            found_group = cat_group
+                            break
+                    except Exception:
+                        pass
+                    # 設定がなければ親を遡って探す
+                    current = cat
+                    while current.parent_id:
+                        parent = s.get(Category, current.parent_id)
+                        if parent:
+                            try:
+                                parent_group = getattr(parent, 'kds_judgment_group', None)
+                                if parent_group:
+                                    found_group = parent_group
+                                    break
+                            except Exception:
+                                pass
+                        current = parent
+                        if not current:
+                            break
+                    if found_group:
+                        break
+                
+                # グループが見つからなかった場合は "default" を使用
+                menu_to_group[menu_id] = found_group if found_group else "default"
+        
+        # ★ テーブル×グループごとの注文時刻履歴を取得（未会計のみ）
+        table_group_time_history = {}  # (table_no, group) -> [time_str, ...]
+        for r in rows:
+            table_no = r.table_no
+            menu_id = r.menu_id
+            kds_group = menu_to_group.get(menu_id, "default")  # グループが未設定の場合は"default"
+            
+            # ordered_atを取得
+            v = getattr(r, "ordered_at", None)
+            if v and table_no:
+                # 時刻を文字列化（HH:MM形式）
+                try:
+                    if hasattr(v, "strftime"):
+                        dt = v
+                        # UTCからJSTへ変換（タイムゾーン情報の有無に関わらず）
+                        if dt.tzinfo is None:
+                            # タイムゾーン情報がない場合、UTCとみなしてJSTに変換
+                            dt = dt.replace(tzinfo=timezone.utc).astimezone(timezone(timedelta(hours=9)))
+                        else:
+                            # タイムゾーン情報がある場合、JSTに変換
+                            dt = dt.astimezone(timezone(timedelta(hours=9)))
+                        time_str = dt.strftime("%H:%M")
+                    else:
+                        t = str(v)
+                        try:
+                            # 文字列からdatetimeオブジェクトを生成し、UTCとみなしてJSTに変換
+                            dt = datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
+                            dt = dt.replace(tzinfo=timezone.utc).astimezone(timezone(timedelta(hours=9)))
+                            time_str = dt.strftime("%H:%M")
+                        except ValueError:
+                            if " " in t:
+                                time_str = t.split(" ")[1][:5]
+                            else:
+                                time_str = t[:5]
+                    
+                    key = (table_no, kds_group)
+                    if key not in table_group_time_history:
+                        table_group_time_history[key] = []
+                    if time_str not in table_group_time_history[key]:
+                        table_group_time_history[key].append(time_str)
+                except Exception:
+                    pass
+        
+        # 各テーブル×グループの時刻を古い順にソート
+        for key in table_group_time_history:
+            table_group_time_history[key].sort()
 
         items = []
         filtered_zero = []
@@ -7532,9 +7747,26 @@ def kds_api_get_items():
                 except Exception:
                     ordered_time = ""
 
-            disp = "調理中" if c > 0 else "新規"
+            # ★ テーブル×グループの注文時刻履歴から何回目の注文かを判定
+            table_no = r.table_no
+            menu_id = r.menu_id
+            kds_group = menu_to_group.get(menu_id, "default")  # グループが未設定の場合は"default"
+            
+            # このテーブル×グループの注文時刻履歴を取得
+            key = (table_no, kds_group)
+            group_times = table_group_time_history.get(key, [])
+            is_first_time = (len(group_times) > 0 and ordered_time and group_times[0] == ordered_time)
+            
+            # 調理中なら「調理中」、そうでなければ2回目以降の時刻なら「追加」、1回目の時刻なら「新規」
+            if c > 0:
+                disp = "調理中"
+            elif is_first_time:
+                disp = "新規"
+            else:
+                disp = "追加"
             items.append({
                 "id": r.id,
+                "order_id": r.order_id,  # ★ 注文IDを追加（区切り表示用）
                 "table_no": r.table_no,
                 "name": r.name,
                 "qty": qty_remain,  # 未消化分（新規+調理中）
@@ -7574,6 +7806,7 @@ def kds_api_get_items():
         return jsonify(ok=False, error="internal error"), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -7644,6 +7877,7 @@ def admin_kds_categories():
 
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- KDS カテゴリ割当（メニュー⇄KDSカテゴリのマッピング） -----------------------
@@ -7794,6 +8028,7 @@ def admin_kds_mapping():
 
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -7810,6 +8045,7 @@ def api_kds_categories():
         return jsonify(ok=True, categories=[{"id": c["id"], "name": c["名称"]} for c in cats])
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -7928,6 +8164,95 @@ def api_menus_by_category(category_id: int):
         return jsonify(ok=False, error=str(e)), 500
     finally:
         s.close()
+        SessionLocal.remove()
+
+
+# --- [Menu API] 複数カテゴリのメニューを一括取得 -----------------------------------------
+@app.get("/api/menus/by_categories", endpoint="api_menus_by_categories")
+def api_menus_by_categories():
+    """GET /api/menus/by_categories?category_ids=1,2,3&token=xxx"""
+    s = SessionLocal()
+    try:
+        # QRトークンから店舗IDを取得（QRセルフオーダー用）
+        token = request.args.get("token")
+        if token:
+            qt = s.query(QrToken).filter_by(token=token).first()
+            if not qt:
+                return jsonify(ok=False, error="無効なトークン"), 400
+            sid = qt.store_id
+        else:
+            # セッションから店舗IDを取得（従業員用）
+            sid = current_store_id()
+        
+        if sid is None:
+            return jsonify(ok=False, error="店舗スコープ不明"), 400
+
+        # category_idsパラメータを取得
+        category_ids_str = request.args.get("category_ids", "")
+        if not category_ids_str:
+            return jsonify(ok=False, error="category_idsパラメータが必要です"), 400
+        
+        try:
+            category_ids = [int(cid.strip()) for cid in category_ids_str.split(",") if cid.strip()]
+        except ValueError:
+            return jsonify(ok=False, error="category_idsの形式が不正です"), 400
+        
+        if not category_ids:
+            return jsonify(ok=False, error="category_idsが空です"), 400
+
+        from sqlalchemy.orm import aliased
+        L = aliased(ProductCategoryLink)
+
+        # 各カテゴリのメニューを取得
+        result = {}
+        for category_id in category_ids:
+            q = s.query(Menu)
+            if hasattr(Menu, "store_id"):
+                q = q.filter(Menu.store_id == sid)
+
+            # 削除済みメニューは注文画面に表示しない
+            if hasattr(Menu, "is_deleted"):
+                q = q.filter(Menu.is_deleted == 0)
+
+            if category_id != 0:  # 0=すべて
+                q = (
+                    q.join(L, L.product_id == Menu.id)
+                     .filter(L.category_id == category_id)
+                     .order_by(
+                         L.display_order.asc(),
+                         Menu.display_order.asc(),
+                         Menu.id.asc()
+                     )
+                )
+            else:
+                q = q.order_by(Menu.display_order.asc(), Menu.id.asc())
+
+            rows = q.all()
+
+            out = []
+            for m in rows:
+                eff_rate  = resolve_effective_tax_rate_for_menu(s, m.id, m.tax_rate)
+                price_excl = int(m.price)
+                price_incl = display_price_incl_from_excl(price_excl, eff_rate)
+                out.append({
+                    "id": m.id,
+                    "name": m.name,
+                    "description": m.description or "",
+                    "photo_url": m.photo_url,
+                    "price_excl": price_excl,
+                    "price_incl": price_incl,
+                    "available": int(m.available or 0),
+                    "is_market_price": bool(getattr(m, "is_market_price", 0)),
+                })
+            result[str(category_id)] = out
+        
+        return jsonify(ok=True, categories=result)
+    except Exception as e:
+        app.logger.error("[api_menus_by_categories] %s", e, exc_info=True)
+        return jsonify(ok=False, error=str(e)), 500
+    finally:
+        s.close()
+        SessionLocal.remove()
 
 
 # --- [Order API] 現在の明細 JSON（管理画面） -----------------------------------
@@ -8096,6 +8421,7 @@ def order_detail_json(order_id: int):
         return jsonify(ok=False, error=str(e)), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -8191,8 +8517,8 @@ def order_complete(order_id: int):
                 paid = int(qp.scalar() or 0)
 
         remaining = int(total_incl) - int(paid)
-        if remaining != 0:
-            return jsonify(ok=False, error="残額があるため完了できません", summary={
+        if remaining > 0:
+            return jsonify(ok=False, error="支払金額が不足しています", summary={
                 "subtotal": int(subtotal_excl), "tax": int(tax_total),
                 "total": int(total_incl), "paid": int(paid), "remaining": int(remaining)
             }), 400
@@ -8307,6 +8633,7 @@ def order_complete(order_id: int):
         return jsonify(ok=False, error=str(e)), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -8341,6 +8668,7 @@ def __probe_customer_detail():
         return jsonify(ok=False, error=str(e)), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -8373,6 +8701,7 @@ def __debug_append_history(order_id):
         return jsonify(ok=False, error=str(e)), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -8446,6 +8775,7 @@ def order_void_payments(order_id: int):
         return jsonify(ok=False, error=str(e)), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -8537,6 +8867,7 @@ def public_order_detail_json(order_id: int):
         return jsonify(ok=False, error=str(e)), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- [Table API] テーブル番号ラベル取得 ----------------------------------------
@@ -8552,6 +8883,7 @@ def api_table_label(table_id: int):
         return jsonify({"ok": True, "table_id": table_id, "table_no": table_no})
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -8836,6 +9168,7 @@ def admin_order_summary(order_id: int):
         return jsonify({"ok": False, "error": "internal error"}), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -8911,6 +9244,7 @@ def set_market_price(item_id):
         return jsonify({"ok": False, "error": "internal error"}), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 分割会計（取消除外の残額を基準に検証） -----------------------------
@@ -8973,9 +9307,6 @@ def admin_settle_pay(table_id):
                 return jsonify({"ok": False, "error": "invalid payment row"}), 400
             total_input += amt
 
-        if total_input > remaining_before:
-            return jsonify({"ok": False, "error": "amount exceeds remaining"}), 400
-
         # 支払方法が実在するか簡易チェック（存在すればOK）
         methods = {}
         try:
@@ -8984,6 +9315,25 @@ def admin_settle_pay(table_id):
                 methods[m.id] = m
         except Exception:
             pass  # PaymentMethod テーブルが無い環境でも動くように
+
+        # 現金以外の支払い金額の合計を計算
+        non_cash_sum = 0
+        for r in rows:
+            mid = int(r.get("method_id") or 0)
+            amt = int(r.get("amount") or 0)
+            method = methods.get(mid)
+            is_cash = False
+            if method:
+                if hasattr(method, 'code') and method.code == 'CASH':
+                    is_cash = True
+                elif hasattr(method, 'name') and '現金' in method.name:
+                    is_cash = True
+            if not is_cash:
+                non_cash_sum += amt
+        
+        # 現金以外（カード、電子マネー、クーポンなど）は合計金額を超えて登録不可
+        if non_cash_sum > remaining_before:
+            return jsonify({"ok": False, "error": "カード、電子マネー、クーポンなどの支払いは合計金額を超えて登録できません。"}), 400
 
         # 支払レコードを作成
         from datetime import datetime, timezone
@@ -9024,6 +9374,7 @@ def admin_settle_pay(table_id):
         return jsonify({"ok": False, "error": "internal error"}), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -9131,6 +9482,7 @@ def api_order_item_status(item_id: int):
         return jsonify(ok=False, error="internal error"), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -9220,6 +9572,7 @@ def admin_menu_new_form():
         )
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 共通ヘルパ：数値変換（int/float の安全化） ---------------------------------
@@ -9380,6 +9733,7 @@ def admin_menu_new():
         return f"登録に失敗しました: {e}", 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 画面：作成済みメニュー一覧 -------------------------------------------------
@@ -9397,6 +9751,7 @@ def admin_menu_list():
         )
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- API：カテゴリ別メニュー一覧（管理画面・Ajax） ------------------------------
@@ -9448,6 +9803,7 @@ def api_admin_menus_by_category(category_id: int):
         return jsonify(ok=False, error=str(e)), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- ユーティリティ：カテゴリの子孫ID収集（含む/含まないは呼び出し側で指定） ---
@@ -9531,6 +9887,7 @@ def api_admin_category_bulk_available(cid: int):
         return jsonify(ok=False, error=str(e)), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- API：カテゴリ一括 論理削除 ---
@@ -9588,6 +9945,7 @@ def api_admin_category_bulk_delete(cid: int):
         return jsonify(ok=False, error=str(e)), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -9616,6 +9974,7 @@ def api_admin_menu_toggle(mid: int):
         return jsonify(ok=False, error=str(e)), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- デバッグ：ログレベル設定（任意） -------------------------------------------
@@ -9788,6 +10147,9 @@ def admin_menu_edit(mid):
             # 時価商品フラグ
             if hasattr(m, "is_market_price"):
                 m.is_market_price = 1 if f.get("時価") else 0
+            # KDS判定グループ
+            if hasattr(m, "kds_judgment_group"):
+                m.kds_judgment_group = (f.get("KDS判定グループ") or "").strip() or None
             if hasattr(m, "store_id") and sid is not None:
                 m.store_id = sid
 
@@ -9827,6 +10189,7 @@ def admin_menu_edit(mid):
                          '    "表示順"=:disp, '
                          '    "写真URL"=:photo, '
                          '    "時価"=:is_mp, '
+                         '    "KDS判定グループ"=:kds_group, '
                          '    "更新日時"=:ts '
                          'WHERE "M_メニュー".id = :id'),
                     {
@@ -9838,6 +10201,7 @@ def admin_menu_edit(mid):
                         "disp": _to_int(f.get("表示順"), 0),
                         "photo": (photo_url or m.photo_url),
                         "is_mp": 1 if f.get("時価") else 0,
+                        "kds_group": (f.get("KDS判定グループ") or "").strip() or None,
                         "ts": ts,
                         "id": mid,
                     }
@@ -9974,6 +10338,7 @@ def admin_menu_edit(mid):
         raise
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- デバッグ：DB接続情報ダンプ -------------------------------------------------
@@ -10043,6 +10408,7 @@ def __debug_menu(mid):
         })
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -10085,6 +10451,7 @@ def __debug_menu_list():
         return jsonify({"sid": sid, "count": len(out), "items": out})
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 削除API：メニュー削除（論理削除へ変更） ------------------------
@@ -10150,6 +10517,7 @@ def admin_menu_delete(mid: int):
         raise
     finally:
         s.close()
+        SessionLocal.remove()
 
 # --- 復活API：削除済みメニューの復元（提供状態は復元しない） ----------------------
 @app.post("/admin/menu/<int:mid>/restore", endpoint="admin_menu_restore")
@@ -10192,6 +10560,7 @@ def admin_menu_restore(mid: int):
         return redirect(url_for("admin_menu_list_deleted"))
     finally:
         s.close()
+        SessionLocal.remove()
 
 # --- 復活API：削除済みメニューの復元＋提供開始 ---------------------------
 @app.post("/admin/menu/<int:mid>/restore_and_enable", endpoint="admin_menu_restore_and_enable")
@@ -10232,6 +10601,7 @@ def admin_menu_restore_and_enable(mid: int):
         return redirect(url_for("admin_menu_list_deleted"))
     finally:
         s.close()
+        SessionLocal.remove()
 
 # --- 画面：削除済みメニュー一覧 ---------------------------------------------
 @app.get("/admin/menus/deleted", endpoint="admin_menu_list_deleted")
@@ -10252,6 +10622,7 @@ def admin_menu_list_deleted():
         return render_template("menu_list_deleted.html", title="削除済みメニュー一覧", menus=menus)
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -10371,6 +10742,67 @@ def ensure_payment_method_unique_scope():
         return has_store, has_tenant
 
 
+
+def ensure_payment_method_category():
+    """M_支払方法テーブルにcategoryカラムを自動追加（冪等）"""
+    with engine.begin() as conn:
+        dialect = conn.dialect.name if hasattr(conn, 'dialect') else 'sqlite'
+        
+        # カラムの存在確認
+        if dialect == 'sqlite':
+            cols = [row[1] for row in conn.execute(text("PRAGMA table_info('M_支払方法')")).fetchall()]
+        else:
+            cols = [
+                r["column_name"] for r in conn.execute(
+                    text("""
+                        SELECT column_name 
+                        FROM information_schema.columns 
+                        WHERE table_name = :table_name
+                    """),
+                    {"table_name": "M_支払方法"}
+                ).mappings().all()
+            ]
+        
+        # 既存のcategoryカラムをカテゴリにリネーム
+        if "category" in cols and "カテゴリ" not in cols:
+            try:
+                if dialect == 'sqlite':
+                    # SQLiteはRENAME COLUMNをサポートしていないので、新しいカラムを追加してデータをコピー
+                    conn.execute(text(
+                        'ALTER TABLE "M_支払方法" ADD COLUMN "カテゴリ" VARCHAR(20) DEFAULT \'payment\''
+                    ))
+                    conn.execute(text(
+                        'UPDATE "M_支払方法" SET "カテゴリ" = category'
+                    ))
+                    # 古いカラムは残しておく（SQLiteの制約）
+                else:
+                    # PostgreSQL
+                    conn.execute(text(
+                        'ALTER TABLE "M_支払方法" RENAME COLUMN category TO "カテゴリ"'
+                    ))
+                print("✓ M_支払方法.category カラムをカテゴリにリネームしました")
+            except Exception as e:
+                print(f"⚠ M_支払方法.category カラムのリネームに失敗: {e}")
+        # カテゴリカラムが存在しない場合のみ追加
+        elif "カテゴリ" not in cols:
+            try:
+                if dialect == 'sqlite':
+                    conn.execute(text(
+                        'ALTER TABLE "M_支払方法" ADD COLUMN "カテゴリ" VARCHAR(20) DEFAULT \'payment\''
+                    ))
+                else:
+                    # PostgreSQL
+                    conn.execute(text(
+                        'ALTER TABLE "M_支払方法" ADD COLUMN "カテゴリ" VARCHAR(20) DEFAULT \'payment\''
+                    ))
+                print("✓ M_支払方法.カテゴリ カラムを追加しました")
+            except Exception as e:
+                print(f"⚠ M_支払方法.カテゴリ カラムの追加に失敗: {e}")
+        else:
+            print("✓ M_支払方法.カテゴリ カラムは既に存在します")
+
+
+
 # --- 画面：支払方法一覧（管理者） ------------------------------------------------
 @app.route("/admin/payment_methods")
 @require_admin
@@ -10386,13 +10818,25 @@ def admin_payment_methods():
         has_tenant_col = has_db_column("M_支払方法", "tenant_id")
 
         # 必要な列だけ明示SELECT（存在しない列は選ばない）
-        q = s.query(
-            PaymentMethod.id,
-            PaymentMethod.code,
-            PaymentMethod.name,
-            PaymentMethod.active,
-            PaymentMethod.display_order,
-        )
+        has_category_col = has_db_column("M_支払方法", "カテゴリ")
+        
+        if has_category_col:
+            q = s.query(
+                PaymentMethod.id,
+                PaymentMethod.code,
+                PaymentMethod.name,
+                PaymentMethod.category,
+                PaymentMethod.active,
+                PaymentMethod.display_order,
+            )
+        else:
+            q = s.query(
+                PaymentMethod.id,
+                PaymentMethod.code,
+                PaymentMethod.name,
+                PaymentMethod.active,
+                PaymentMethod.display_order,
+            )
 
         if has_tenant_col and session.get("tenant_id") is not None and hasattr(PaymentMethod, "tenant_id"):
             q = q.filter(PaymentMethod.tenant_id == session.get("tenant_id"))
@@ -10402,16 +10846,23 @@ def admin_payment_methods():
 
         rows = q.order_by(PaymentMethod.display_order, PaymentMethod.name).all()
 
-        lst = [{
-            "id": r.id, "コード": r.code, "名称": r.name,
-            "有効": r.active, "表示順": r.display_order
-        } for r in rows]
+        lst = []
+        for r in rows:
+            item = {
+                "id": r.id, "コード": r.code, "名称": r.name,
+                "有効": r.active, "表示順": r.display_order
+            }
+            if has_category_col:
+                category = getattr(r, 'category', 'payment')
+                item["カテゴリ"] = "支払い" if category == "payment" else "値引き"
+            lst.append(item)
 
         return render_template("payment_methods.html", title="支払方法マスタ", rows=lst)
     except Exception as e:
         return f"支払方法の取得中にエラーが発生しました: {e}", 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 登録：支払方法の新規追加 ----------------------------------------------------
@@ -10431,6 +10882,7 @@ def admin_payment_methods_new():
     try:
         code = (f.get("コード") or "").strip()
         name = (f.get("名称") or "").strip()
+        category = (f.get("カテゴリ") or "payment").strip()
         disp = int(f.get("表示順", 0))
         if not code or not name:
             flash("コード・名称は必須です。")
@@ -10447,26 +10899,37 @@ def admin_payment_methods_new():
             return redirect(url_for("admin_payment_methods"))
 
         now = now_str()
+        has_category_col = has_db_column("M_支払方法", "カテゴリ")
 
         if has_store_col:
-            pm = PaymentMethod(
-                code=code, name=name, active=1,
-                display_order=disp, created_at=now, updated_at=now
-            )
+            pm_data = {
+                "code": code, "name": name, "active": 1,
+                "display_order": disp, "created_at": now, "updated_at": now
+            }
+            if has_category_col:
+                pm_data["category"] = category
+            pm = PaymentMethod(**pm_data)
             if hasattr(PaymentMethod, "store_id"):
                 pm.store_id = sid
             if has_tenant_col and hasattr(PaymentMethod, "tenant_id") and session.get("tenant_id") is not None:
                 pm.tenant_id = session.get("tenant_id")
             s.add(pm)
         else:
-            cols = ['"コード"', '"名称"', '"有効"', '"表示順"', '"作成日時"', '"更新日時"']
+            cols = ['"\u30b3\u30fc\u30c9"', '"\u540d\u79f0"', '"\u6709\u52b9"', '"\u8868\u793a\u9806"', '"\u4f5c\u6210\u65e5\u6642"', '"\u66f4\u65b0\u65e5\u6642"']
             vals = [':code', ':name', '1', ':disp', ':created', ':updated']
             params = {"code": code, "name": name, "disp": disp, "created": now, "updated": now}
+            
+            if has_category_col:
+                cols.append('category')
+                vals.append(':category')
+                params["category"] = category
+            
             if has_tenant_col and session.get("tenant_id") is not None:
                 cols.append('tenant_id')
                 vals.append(':tenant_id')
                 params["tenant_id"] = session.get("tenant_id")
-            sql = f'INSERT INTO "M_支払方法" ({", ".join(cols)}) VALUES ({", ".join(vals)})'
+            
+            sql = f'INSERT INTO "M_\u652f\u6255\u65b9\u6cd5" ({", ".join(cols)}) VALUES ({", ".join(vals)})'
             s.execute(text(sql), params)
 
         s.commit()
@@ -10484,6 +10947,7 @@ def admin_payment_methods_new():
         return redirect(url_for("admin_payment_methods"))
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 切替：支払方法の有効/無効トグル --------------------------------------------
@@ -10537,6 +11001,83 @@ def admin_payment_methods_toggle(pid):
         return redirect(url_for("admin_payment_methods"))
     finally:
         s.close()
+        SessionLocal.remove()
+
+
+@app.route("/admin/payment_methods/<int:pid>/edit", methods=["POST"])
+@require_admin
+def admin_payment_methods_edit(pid):
+    sid = current_store_id()
+    if sid is None:
+        flash("店舗が選択されていません。")
+        return redirect(url_for("admin_payment_methods"))
+    
+    f = request.form
+    s = SessionLocal()
+    try:
+        has_store_col = has_db_column("M_支払方法", "店舗ID")
+        has_tenant_col = has_db_column("M_支払方法", "tenant_id")
+        has_category_col = has_db_column("M_支払方法", "カテゴリ")
+        now = now_str()
+        
+        # フォームから値を取得
+        name = (f.get("名称") or "").strip()
+        category = (f.get("カテゴリ") or "payment").strip()
+        disp = int(f.get("表示順", 0))
+        
+        if not name:
+            flash("名称は必須です。")
+            return redirect(url_for("admin_payment_methods"))
+        
+        if has_store_col:
+            q = s.query(PaymentMethod).filter(PaymentMethod.id == pid)
+            if hasattr(PaymentMethod, "store_id"):
+                q = q.filter(PaymentMethod.store_id == sid)
+            if has_tenant_col and hasattr(PaymentMethod, "tenant_id") and session.get("tenant_id") is not None:
+                q = q.filter(PaymentMethod.tenant_id == session.get("tenant_id"))
+            pm = q.first()
+            if pm:
+                pm.name = name
+                if has_category_col and hasattr(pm, 'category'):
+                    pm.category = category
+                pm.display_order = disp
+                pm.updated_at = now
+                s.commit()
+                flash("更新しました。")
+            else:
+                flash("対象の支払方法が見つかりません。")
+        else:
+            # 古いスキーマの場合
+            set_clauses = ['"名称" = :name', '"表示順" = :disp', '"更新日時" = :now']
+            params = {"pid": pid, "name": name, "disp": disp, "now": now}
+            
+            if has_category_col:
+                set_clauses.append('category = :category')
+                params["category"] = category
+            
+            where = ['id = :pid']
+            if has_tenant_col and session.get("tenant_id") is not None:
+                where.append('tenant_id = :tenant_id')
+                params["tenant_id"] = session.get("tenant_id")
+            
+            sql = f'''
+                UPDATE "M_支払方法"
+                SET {', '.join(set_clauses)}
+                WHERE {' AND '.join(where)}
+            '''
+            s.execute(text(sql), params)
+            s.commit()
+            flash("更新しました。")
+        
+        return redirect(url_for("admin_payment_methods"))
+    except Exception as e:
+        s.rollback()
+        flash(f"更新に失敗しました: {e}")
+        return redirect(url_for("admin_payment_methods"))
+    finally:
+        s.close()
+        SessionLocal.remove()
+
 
 
 # --- 公開API：支払方法のJSON（会計UI用） ---------------------------------------
@@ -10572,6 +11113,7 @@ def payment_methods_json():
         return jsonify({"ok": False, "error": str(e)}), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 開発：支払方法ユニークインデックスの再構築 --------------------------------
@@ -10706,6 +11248,7 @@ def admin_tables():
         return render_template("tables.html", title="テーブル管理", tables=tables)
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 登録：テーブル新規作成 -----------------------------------------------------
@@ -10725,6 +11268,7 @@ def admin_tables_new():
         return redirect(url_for("admin_tables"))
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 削除：テーブル削除 ---------------------------------------------------------
@@ -10740,6 +11284,7 @@ def admin_tables_delete(table_id):
         return redirect(url_for("admin_tables"))
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- ヘルパ：テーブル用の恒久QRトークンを確保 -----------------------------------
@@ -10804,6 +11349,7 @@ def admin_table_qr(table_id):
         )
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 画像：テーブルQRのPNGを返す ------------------------------------------------
@@ -10847,6 +11393,7 @@ def admin_categories():
                 "id": node.id, "名称": node.name,
                 "親": parent.name if parent else None,
                 "表示順": node.display_order, "有効": node.active, "depth": depth,
+                "KDS判定グループ": node.kds_judgment_group or "-",  # ★ KDS判定グループを追加
             })
             for ch in sorted(children_map.get(node.id, []), key=lambda x:(x.display_order, x.name)):
                 dfs(ch, depth+1)
@@ -10857,6 +11404,7 @@ def admin_categories():
         return render_template("categories.html", title="カテゴリ管理", cats=out)
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 登録：カテゴリ新規作成 -----------------------------------------------------
@@ -10896,6 +11444,7 @@ def admin_categories_new():
         return redirect(url_for("admin_categories"))
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 画面/更新：カテゴリ編集 ----------------------------------------------------
@@ -10925,10 +11474,13 @@ def admin_categories_edit(cid):
                 if depth >= 5:
                     return "これ以上子カテゴリを作れません（最大5階層）。", 400
 
+            kds_group = f.get("KDS判定グループ", "").strip() or None
+
             c.name = name or c.name
             c.display_order = disp
             c.parent_id = parent_id
             c.active = active
+            c.kds_judgment_group = kds_group  # ★ KDS判定グループを保存
             c.updated_at = now_str()
             s.commit()
             return redirect(url_for("admin_categories"))
@@ -10938,6 +11490,7 @@ def admin_categories_edit(cid):
         return render_template("categories_edit.html", title="カテゴリ編集", cat=c, cat_options=cat_options)
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 切替：カテゴリの有効/無効トグル --------------------------------------------
@@ -10955,6 +11508,7 @@ def admin_categories_toggle(cid):
         return redirect(url_for("admin_categories"))
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 削除：カテゴリ削除（子や割当の存在チェック込み） ---------------------------
@@ -10981,6 +11535,7 @@ def admin_categories_delete(cid):
         return redirect(url_for("admin_categories"))
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # ---------------------------------------------------------------------
@@ -11032,6 +11587,7 @@ def admin_product_options():
                              options=options_data)
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 画面：商品オプション新規作成 -----------------------------------------------
@@ -11098,6 +11654,7 @@ def admin_product_options_new():
                              products=products)
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 画面：商品オプション編集 ---------------------------------------------------
@@ -11211,6 +11768,7 @@ def admin_product_options_edit(option_id):
                              selected_product_ids=selected_product_ids)
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 削除：商品オプション削除 ---------------------------------------------------
@@ -11238,6 +11796,7 @@ def admin_product_options_delete(option_id):
         return redirect(url_for("admin_product_options"))
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # ---------------------------------------------------------------------
@@ -11457,6 +12016,7 @@ def admin_printers():
         )
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- プリンタ新規登録（手動） ---------------------------------------------------
@@ -11481,6 +12041,7 @@ def admin_printers_new():
         return redirect(url_for("admin_printers"))
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- プリンタ有効/無効トグル ----------------------------------------------------
@@ -11496,6 +12057,7 @@ def admin_printers_toggle(pid):
         return redirect(url_for("admin_printers"))
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- プリンタ自動検出API（JSON） ------------------------------------------------
@@ -11555,6 +12117,7 @@ def admin_printers_discover():
         existing = {(p.connection or "").strip() for p in q.all()}
     finally:
         s.close()
+        SessionLocal.remove()
 
     uniq = []
     seen = set()
@@ -11621,6 +12184,7 @@ def admin_printers_import():
         return jsonify(ok=False, error=str(e)), 400
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # ---------------------------------------------------------------------
@@ -11656,6 +12220,7 @@ def admin_rules():
                                rules=out_rules, cats=cats_dict, menu=menu_dict, printers=printers_dict)
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 印刷ルール新規作成 ---------------------------------------------------------
@@ -11677,6 +12242,7 @@ def admin_rules_new():
         return redirect(url_for("admin_rules"))
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 印刷ルール削除 -------------------------------------------------------------
@@ -11692,6 +12258,7 @@ def admin_rules_delete(rid):
         return redirect(url_for("admin_rules"))
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # ---------------------------------------------------------------------
@@ -11738,6 +12305,7 @@ def backfill_store_null():
         return "backfill done", 200
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # ---------------------------------------------------------------------
@@ -11816,6 +12384,7 @@ def admin_member_new():
         })
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # ---------------------------------------------------------------------
@@ -11846,6 +12415,7 @@ def admin_settle(table_id):
         return jsonify({"ok": True})
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -11869,6 +12439,7 @@ def gen_qr_token(table_id: int, ttl_minutes: int | None = None) -> str:
         return token_value
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- QRトークン無効化（テーブルID指定） -------------------------------------------
@@ -11968,6 +12539,7 @@ def menu_page_by_table(tenant_slug, table_id):
         return "システムエラーが発生しました。", 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -12355,6 +12927,7 @@ def reset_order_session(order_id: int):
     finally:
         try:
             s.close()
+            SessionLocal.remove()
         except Exception:
             pass
 
@@ -12672,6 +13245,7 @@ def menu_page(tenant_slug, token):
 
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -12980,6 +13554,7 @@ def api_order():
         return jsonify({"ok": False, "error": "internal error"}), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -13010,6 +13585,7 @@ def api_add_item():
         ...
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -13658,6 +14234,7 @@ def admin_table_move():
         return jsonify({"ok": False, "error": str(e)}), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -13784,6 +14361,7 @@ def admin_table_move_history():
     
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -13841,6 +14419,7 @@ def staff_order(table_id):
         )
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # ---------------------------------------------------------------------
@@ -13995,6 +14574,7 @@ def staff_floor():
         )
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -14059,6 +14639,7 @@ def staff_open_menu(table_id: int):
 
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -14321,6 +14902,7 @@ def staff_api_order():
         return jsonify({"ok": False, "error": "internal error"}), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -14465,6 +15047,7 @@ def _progress_update_core(item_id: int):
         return jsonify(ok=False, error="internal error"), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -14516,6 +15099,7 @@ def staff_update_order_status(order_id):
         return jsonify({"ok": False, "error": "internal error"}), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -14901,6 +15485,7 @@ def sales_report():
         )
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -15143,6 +15728,7 @@ def api_sales_daily():
         return jsonify({"status": "error", "message": str(e)})
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -15208,6 +15794,7 @@ def api_sales_monthly():
         return jsonify({"status":"error","message":str(e)})
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -15429,6 +16016,7 @@ def api_sales_products():
         return jsonify({"status": "error", "message": str(e)}), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -15467,6 +16055,7 @@ def api_sales_payment_methods():
         return jsonify({"status":"error","message":str(e)})
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -15517,6 +16106,7 @@ def api_sales_summary():
         return jsonify({"status":"error","message":str(e)})
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -15564,6 +16154,7 @@ def export_daily_sales():
         return jsonify({"status":"error","message":str(e)})
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -15615,6 +16206,7 @@ def export_products_sales():
         return jsonify({"status":"error","message":str(e)})
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # ---------------------------------------------------------------------
@@ -15654,6 +16246,7 @@ def api_sales_hourly():
         return jsonify({"status":"error","message":str(e)})
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # =========================================================
@@ -15772,6 +16365,7 @@ def api_printer_config():
         return jsonify({"error": str(e)}), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 @app.route("/api/print_data/<int:order_id>", methods=["GET"])
@@ -15810,6 +16404,7 @@ def api_print_data(order_id: int):
         return jsonify({"error": str(e)}), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # =========================================================
@@ -15837,6 +16432,7 @@ def api_menu_options(menu_id: int):
         return jsonify({"ok": False, "error": str(e)}), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # =========================================================
@@ -15966,6 +16562,7 @@ def admin_reopen_order(order_id: int):
         return jsonify({"ok": False, "error": "internal error"}), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -15983,6 +16580,7 @@ def store_master_list():
         return render_template("store_master_list.html", stores=stores)
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 店舗IDマスター新規登録（store_master_add） -----------------------------------
@@ -16023,6 +16621,7 @@ def store_master_add():
         return render_template("store_master_form.html")
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 店舗IDマスター編集（store_master_edit） --------------------------------------
@@ -16066,6 +16665,7 @@ def store_master_edit(store_id):
         return render_template("store_master_form.html", store=store)
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 店舗IDマスター削除（store_master_delete） ------------------------------------
@@ -16085,6 +16685,7 @@ def store_master_delete(store_id):
         return redirect(url_for("store_master_list"))
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # ---------------------------------------------------------------------
@@ -16115,6 +16716,7 @@ def dev_tools():
         return render_template("dev_tools.html", stats=stats)
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # ================================================
@@ -16441,6 +17043,7 @@ def api_customer_detail_post():
         return jsonify(ok=False, error=f"{type(e).__name__}: {e}"), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # ---- ステータス ----
@@ -16466,6 +17069,7 @@ def api_customer_detail_status():
         return jsonify(ok=False, error=f"{type(e).__name__}: {e}"), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # ---- 注文前バリデーション ----
@@ -16552,6 +17156,7 @@ def _ensure_customer_detail_table():
         # index は必要に応じて
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 起動時：T_お客様詳細 の存在保証呼び出し（_ensure_customer_detail_table） ------
@@ -16559,6 +17164,13 @@ try:
     _ensure_customer_detail_table()
 except Exception:
     pass
+
+
+# --- 起動時：M_支払方法 にcategoryカラムを追加（ensure_payment_method_category） ------
+try:
+    ensure_payment_method_category()
+except Exception as e:
+    print(f"[MIGRATE] payment method category migration failed: {e}")
 
 
 
@@ -16592,8 +17204,8 @@ def api_customer_detail_get_by_id(cid):
     except Exception as e:
         return jsonify(ok=False, error=f"{type(e).__name__}: {e}"), 500
     finally:
-
         s.close()
+        SessionLocal.remove()
 
 # --- API：お客様情報 更新（PUT /api/customer_detail/<cid>） ------------------------
 @app.put("/api/customer_detail/<int:cid>")
@@ -16626,6 +17238,7 @@ def api_customer_detail_put_by_id(cid):
         return jsonify(ok=False, error=f"{type(e).__name__}: {e}"), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- API：お客様情報 更新（IDなし, PUT /api/customer_detail） ----------------------
@@ -16661,6 +17274,7 @@ def api_customer_detail_put():
         return jsonify(ok=False, error=f"{type(e).__name__}: {e}"), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- API：お客様情報 削除（DELETE /api/customer_detail/<cid>） ---------------------
@@ -16679,6 +17293,7 @@ def api_customer_detail_delete(cid):
         return jsonify(ok=False, error=f"{type(e).__name__}: {e}"), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -17381,6 +17996,7 @@ def admin_table_move_cancel():
         return jsonify({"ok": False, "error": str(e)}), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # ---------------------------------------------------------------------
@@ -17426,6 +18042,7 @@ def admin_table_move_cancel_check(history_id):
         return jsonify({"ok": False, "error": str(e)}), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 
@@ -17454,6 +18071,7 @@ def __menu_test():
         return jsonify({"error": str(e)}), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- 診断：メニュー件数（__menu_diag） --------------------------------------------
@@ -17476,6 +18094,7 @@ def __menu_diag():
         return jsonify({"error": str(e)}), 500
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # --- メイン起動ブロック（__main__） -----------------------------------------------
@@ -17564,6 +18183,7 @@ def bill_print(order_id):
         )
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # ---------------------------------------------------------------------
@@ -17603,6 +18223,40 @@ def receipt_print(order_id):
         jst = timezone(timedelta(hours=9))
         print_time_jst = datetime.now(jst).strftime("%Y-%m-%d %H:%M:%S")
         
+        # 支払い情報を取得
+        payments = s.query(PaymentRecord).options(
+            joinedload(PaymentRecord.method)
+        ).filter(
+            PaymentRecord.order_id == order_id
+        ).order_by(PaymentRecord.id).all()
+        
+        # 支払い内訳を整理（カテゴリ別に分ける）
+        payment_details = []  # 支払い（現金同等物）
+        discount_details = []  # 値引き
+        total_paid = 0
+        total_discount = 0
+        
+        for payment in payments:
+            method = payment.method
+            method_name = method.name if method else "不明"
+            category = method.category if method and hasattr(method, 'category') else "payment"
+            amount = int(payment.amount or 0)
+            
+            if category == "discount":
+                # 値引きカテゴリ
+                total_discount += amount
+                discount_details.append({
+                    "method_name": method_name,
+                    "amount": amount
+                })
+            else:
+                # 支払いカテゴリ（現金同等物）
+                total_paid += amount
+                payment_details.append({
+                    "method_name": method_name,
+                    "amount": amount
+                })
+        
         # 合計金額を再計算（キャンセルを反映）
         import math
         subtotal_excl = 0
@@ -17639,6 +18293,12 @@ def receipt_print(order_id):
             tax_total += unit_tax * qty
             total_incl += unit_incl * qty
         
+        # 値引き後の合計を計算
+        total_after_discount = int(total_incl) - total_discount
+        
+        # おつりを計算
+        change = total_paid - total_after_discount if total_paid > total_after_discount else 0
+        
         return render_template(
             "receipt_print.html",
             store=store,
@@ -17647,10 +18307,17 @@ def receipt_print(order_id):
             subtotal=int(subtotal_excl),
             tax=int(tax_total),
             total=int(total_incl),
-            print_time_jst=print_time_jst
+            discount_details=discount_details,
+            total_discount=total_discount,
+            total_after_discount=total_after_discount,
+            print_time_jst=print_time_jst,
+            payment_details=payment_details,
+            total_paid=total_paid,
+            change=change
         )
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 # ---------------------------------------------------------------------
@@ -17733,6 +18400,43 @@ def invoice_print(order_id):
             tax_total += unit_tax * qty
             total_incl += unit_incl * qty
         
+        # 支払い情報を取得
+        payments = s.query(PaymentRecord).options(
+            joinedload(PaymentRecord.method)
+        ).filter(
+            PaymentRecord.order_id == order_id
+        ).order_by(PaymentRecord.id).all()
+        
+        # 支払い内訳を整理（カテゴリ別に分ける）
+        payment_details = []  # 支払い（現金同等物）
+        discount_details = []  # 値引き
+        total_paid = 0
+        total_discount = 0
+        
+        for payment in payments:
+            method = payment.method
+            method_name = method.name if method else "不明"
+            category = method.category if method and hasattr(method, 'category') else "payment"
+            amount = int(payment.amount or 0)
+            
+            if category == "discount":
+                # 値引きカテゴリ
+                total_discount += amount
+                discount_details.append({
+                    "method_name": method_name,
+                    "amount": amount
+                })
+            else:
+                # 支払いカテゴリ（現金同等物）
+                total_paid += amount
+                payment_details.append({
+                    "method_name": method_name,
+                    "amount": amount
+                })
+        
+        # 値引き後の合計を計算
+        total_after_discount = int(total_incl) - total_discount
+        
         return render_template(
             "invoice_print.html",
             store=store,
@@ -17743,10 +18447,16 @@ def invoice_print(order_id):
             subtotal=int(subtotal_excl),
             tax=int(tax_total),
             total=int(total_incl),
+            discount_details=discount_details,
+            total_discount=total_discount,
+            total_after_discount=total_after_discount,
+            payment_details=payment_details,
+            total_paid=total_paid,
             print_time_jst=print_time_jst
         )
     finally:
         s.close()
+        SessionLocal.remove()
 
 
 if __name__ == "__main__":
@@ -17808,6 +18518,12 @@ if __name__ == "__main__":
     except Exception as e:
         # 失敗しても起動は続ける（ログは出す）
         print("[MIGRATE] progress table migration failed:", e)
+    
+    # ★★ 支払方法のcategoryカラムを自動追加（グローバルスコープで実行済み）
+    # try:
+    #     ensure_payment_method_category()
+    # except Exception as e:
+    #     print("[MIGRATE] payment method category migration failed:", e)
 
     # 必要テーブル検証 / 自動作成
     verify_schema_or_create()

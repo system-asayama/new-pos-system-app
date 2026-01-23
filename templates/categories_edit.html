@@ -27,6 +27,10 @@
         <option value="0" {% if cat.active!=1 %}selected{% endif %}>無効</option>
       </select>
 
+      <label>KDS判定グループ（任意）</label>
+      <input name="KDS判定グループ" value="{{ cat.kds_judgment_group or '' }}" placeholder="例: drink, food">
+      <p class="small">同じグループ内で「新規」「追加」を判定します。空欄の場場合はデフォルトグループとして扱われます。</p>
+
       <div style="margin-top:12px">
         <button class="btn" type="submit">保存</button>
         <a class="btn sub" href="{{ url_for('admin_categories') }}">戻る</a>

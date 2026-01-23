@@ -115,10 +115,34 @@
       {% endif %}
     </div>
 
+    <!-- ★ 選択した明細の一括操作ボタン -->
+    {% if not is_qr_user %}
+    <div id="bulk-actions-{{ hid }}" class="bulk-actions-panel" style="display:none; margin:12px 0; padding:12px; background:#f3f4f6; border-radius:8px; border:1px solid #d1d5db;">
+      <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+        <span style="font-weight:600; font-size:16px;">選択した明細: <span class="selected-count" data-order-id="{{ hid }}">0</span>件</span>
+        <button type="button" class="bulk-btn bulk-new" data-order-id="{{ hid }}" style="padding:10px 20px; background:#6b7280; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:600; font-size:16px;">
+          📝 一括新規
+        </button>
+        {% if use_cooking_status %}
+        <button type="button" class="bulk-btn bulk-cooking" data-order-id="{{ hid }}" style="padding:10px 20px; background:#3b82f6; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:600; font-size:16px;">
+          👨‍🍳 一括調理中
+        </button>
+        {% endif %}
+        <button type="button" class="bulk-btn bulk-served" data-order-id="{{ hid }}" style="padding:10px 20px; background:#10b981; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:600; font-size:16px;">
+          ✅ 一括提供済
+        </button>
+        <button type="button" class="bulk-btn bulk-cancel" data-order-id="{{ hid }}" style="padding:10px 20px; background:#ef4444; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:600; font-size:16px;">
+          ❌ 一括取消
+        </button>
+      </div>
+    </div>
+    {% endif %}
+
     {% if items and items|length > 0 %}
       <table>
         <thead>
           <tr>
+            <th><input type="checkbox" id="select-all-{{ hid }}" class="select-all-checkbox" data-order-id="{{ hid }}" title="全選択"></th>
             <th>ID</th>
             <th>品名</th>
             <th>数量</th>
@@ -157,8 +181,14 @@
 
             {% set sub_excl = (is_cancel_positive and 0 or (excl * qty)) %}
             {% set sub_incl = (is_cancel_positive and 0 or (incl * qty)) %}
+            {% set is_all_canceled = (qty_canceled >= qty and qty > 0) %}
 
             <tr class="{% if is_negative %}neg-row{% elif is_cancel %}muted{% endif %}">
+              <td>
+                {% if not is_negative and not is_cancel and not is_all_canceled %}
+                  <input type="checkbox" class="item-checkbox" data-item-id="{{ did }}" data-order-id="{{ hid }}">
+                {% endif %}
+              </td>
               <td>{{ did }}</td>
               <td>
                 {{ name }}
@@ -580,6 +610,100 @@
   
   /* ============ 注文伝票印刷 ============ */
   // 注: 注文伝票印刷は/bill/<order_id>へのリンクでプレビュー画面に移行するように変更されました
+
+  /* ============ チェックボックス選択機能 ============ */
+  function updateSelectedCount(orderId) {
+    const checkboxes = document.querySelectorAll(`.item-checkbox[data-order-id="${orderId}"]:checked`);
+    const count = checkboxes.length;
+    const selectedCountEl = document.querySelector(`.selected-count[data-order-id="${orderId}"]`);
+    const bulkActionsEl = document.getElementById(`bulk-actions-${orderId}`);
+    
+    if (selectedCountEl) selectedCountEl.textContent = count;
+    if (bulkActionsEl) bulkActionsEl.style.display = count > 0 ? 'block' : 'none';
+  }
+
+  function getSelectedItemIds(orderId) {
+    const checkboxes = document.querySelectorAll(`.item-checkbox[data-order-id="${orderId}"]:checked`);
+    return Array.from(checkboxes).map(cb => cb.dataset.itemId);
+  }
+
+  async function bulkChangeStatusInDetail(orderId, status) {
+    const itemIds = getSelectedItemIds(orderId);
+    if (itemIds.length === 0) {
+      alert('明細が選択されていません');
+      return;
+    }
+    
+    const confirmMsg = `選択した${itemIds.length}件の明細を「${status}」に変更しますか？`;
+    if (!confirm(confirmMsg)) return;
+    
+    try {
+      for (const itemId of itemIds) {
+        const res = await fetch(`/staff/api/order_item/${itemId}/status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: status })
+        });
+        if (!res.ok) {
+          throw new Error(`明細ID ${itemId} の更新に失敗しました`);
+        }
+      }
+      alert(`${itemIds.length}件のステータスを変更しました`);
+      
+      // 全選択を解除
+      const selectAllCheckbox = document.getElementById(`select-all-${orderId}`);
+      if (selectAllCheckbox) selectAllCheckbox.checked = false;
+      document.querySelectorAll(`.item-checkbox[data-order-id="${orderId}"]`).forEach(cb => cb.checked = false);
+      updateSelectedCount(orderId);
+      
+      // ページをリロードして更新された状態を表示
+      location.reload();
+    } catch(e) {
+      console.error('bulkChangeStatusInDetail error:', e);
+      alert('エラーが発生しました: ' + e.message);
+    }
+  }
+
+  // ★ 全選択チェックボックスのイベント
+  document.addEventListener('change', (e) => {
+    if (e.target && e.target.classList.contains('select-all-checkbox')) {
+      const orderId = e.target.dataset.orderId;
+      const isChecked = e.target.checked;
+      document.querySelectorAll(`.item-checkbox[data-order-id="${orderId}"]`).forEach(cb => {
+        cb.checked = isChecked;
+      });
+      updateSelectedCount(orderId);
+    }
+  });
+
+  // ★ 個別チェックボックスのイベント
+  document.addEventListener('change', (e) => {
+    if (e.target && e.target.classList.contains('item-checkbox')) {
+      const orderId = e.target.dataset.orderId;
+      updateSelectedCount(orderId);
+      
+      // 全選択チェックボックスの状態を更新
+      const allCheckboxes = document.querySelectorAll(`.item-checkbox[data-order-id="${orderId}"]`);
+      const checkedCheckboxes = document.querySelectorAll(`.item-checkbox[data-order-id="${orderId}"]:checked`);
+      const selectAllCheckbox = document.getElementById(`select-all-${orderId}`);
+      if (selectAllCheckbox) {
+        selectAllCheckbox.checked = allCheckboxes.length > 0 && allCheckboxes.length === checkedCheckboxes.length;
+      }
+    }
+  });
+
+  // ★ 一括操作ボタンのイベント
+  document.addEventListener('click', (e) => {
+    if (e.target && e.target.classList.contains('bulk-btn')) {
+      const orderId = e.target.dataset.orderId;
+      let status = '';
+      if (e.target.classList.contains('bulk-new')) status = '新規';
+      else if (e.target.classList.contains('bulk-cooking')) status = '調理中';
+      else if (e.target.classList.contains('bulk-served')) status = '提供済';
+      else if (e.target.classList.contains('bulk-cancel')) status = '取消';
+      if (status) bulkChangeStatusInDetail(orderId, status);
+    }
+  });
 </script>
 
 {% endblock %}

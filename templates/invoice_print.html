@@ -231,7 +231,7 @@
     
     <div class="amount-section">
         <div class="amount-label">下記の通り、正に領収いたしました</div>
-        <div class="amount-value">￥ {{ "{:,}".format(total) }}</div>
+        <div class="amount-value">￥ {{ "{:,}".format(total_after_discount if discount_details else total) }}</div>
         <div class="amount-note">（内消費税 ￥{{ "{:,}".format(tax) }}）</div>
     </div>
     
@@ -252,6 +252,26 @@
                     <td class="label">合計（税込）</td>
                     <td class="value">￥{{ "{:,}".format(total) }}</td>
                 </tr>
+                {% if discount_details %}
+                {% for discount in discount_details %}
+                <tr>
+                    <td class="label">値引き（{{ discount.method_name }}）</td>
+                    <td class="value">-￥{{ "{:,}".format(discount.amount) }}</td>
+                </tr>
+                {% endfor %}
+                <tr class="total">
+                    <td class="label">値引き後合計</td>
+                    <td class="value">￥{{ "{:,}".format(total_after_discount) }}</td>
+                </tr>
+                {% endif %}
+                {% if payment_details %}
+                {% for payment in payment_details %}
+                <tr>
+                    <td class="label">支払い（{{ payment.method_name }}）</td>
+                    <td class="value">￥{{ "{:,}".format(payment.amount) }}</td>
+                </tr>
+                {% endfor %}
+                {% endif %}
             </tbody>
         </table>
     </div>

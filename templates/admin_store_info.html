@@ -99,6 +99,21 @@
     color: #991b1b;
     border: 1px solid #fca5a5;
   }
+  .checkbox-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+  .checkbox-group input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+  }
+  .checkbox-group label {
+    margin: 0;
+    cursor: pointer;
+  }
 </style>
 
 <div class="container">
@@ -144,6 +159,15 @@
       <label for="レシートフッター">レシートフッター</label>
       <textarea id="レシートフッター" name="レシートフッター" placeholder="ご来店ありがとうございました。&#10;またのお越しをお待ちしております。">{{ store.receipt_footer or '' }}</textarea>
       <div class="help-text">レシート下部に表示するメッセージ</div>
+    </div>
+
+    <div class="form-group">
+      <label>👨‍🍳 調理中ステータスの使用</label>
+      <div class="checkbox-group">
+        <input type="checkbox" id="use_cooking_status" name="use_cooking_status" value="1" {{ 'checked' if store.use_cooking_status else '' }}>
+        <label for="use_cooking_status">「調理中」ステータスを使用する</label>
+      </div>
+      <div class="help-text">チェックを外すと、KDS画面や明細画面で「調理中」ボタンが非表示になります</div>
     </div>
 
     <div class="btn-group">
