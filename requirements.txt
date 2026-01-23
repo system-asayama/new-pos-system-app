@@ -1,8 +1,0 @@
-flask
-gunicorn
-sqlalchemy
-psycopg2-binary
-werkzeug
-jinja2
-itsdangerous
-qrcode[pil]==7.4.2
