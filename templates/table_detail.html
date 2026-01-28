@@ -105,7 +105,11 @@
       <div class="small" style="margin-top:6px">
         伝票ステータス:
         <select class="js-hdr-status" data-order-id="{{ hid }}">
+          {% if use_cooking_status %}
           {% set hdr_opts = ['新規','調理中','提供済','会計中','会計済'] %}
+          {% else %}
+          {% set hdr_opts = ['新規','提供済','会計中','会計済'] %}
+          {% endif %}
           {% for opt in hdr_opts %}
             <option value="{{ opt }}" {{ 'selected' if opt == hstatus else '' }}>{{ opt }}</option>
           {% endfor %}
@@ -226,9 +230,11 @@
                     <span class="status-chip chip-new"
                           data-role="chip" data-src="new" data-count="{{ qty_new }}"
                           data-item-id="{{ did }}">新規: {{ qty_new }}</span>
+                    {% if use_cooking_status %}
                     <span class="status-chip chip-cooking"
                           data-role="chip" data-src="cooking" data-count="{{ qty_cooking }}"
                           data-item-id="{{ did }}">調理中: {{ qty_cooking }}</span>
+                    {% endif %}
                     <span class="status-chip chip-served"
                           data-role="chip" data-src="served" data-count="{{ qty_served }}"
                           data-item-id="{{ did }}">提供済: {{ qty_served }}</span>
@@ -333,6 +339,7 @@
   (function () {
     const CSRF = "{{ csrf_token or '' }}";
     const IS_QR_USER = {{ 'true' if is_qr_user else 'false' }};
+    const USE_COOKING_STATUS = {{ 'true' if use_cooking_status else 'false' }};
 
     async function postJSON(url, body) {
       const res = await fetch(url, {
@@ -345,10 +352,15 @@
     function clamp(n, lo, hi){ n = Number(n || 0); return Math.max(lo, Math.min(hi, n)); }
 
     /* ▼ 状態→遷移先の許可ルール（巻き戻し許可を追加） */
-    const ALLOW = {
+    const ALLOW = USE_COOKING_STATUS ? {
       new:      ["調理中","提供済","取消"],
       cooking:  ["新規","提供済","取消"],
       served:   ["新規","調理中","取消"],
+      canceled: []
+    } : {
+      new:      ["提供済","取消"],
+      cooking:  ["新規","提供済","取消"],
+      served:   ["新規","取消"],
       canceled: []
     };
 
