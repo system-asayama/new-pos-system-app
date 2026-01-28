@@ -16,6 +16,25 @@
   <span class="small" style="color:var(--muted)">過去のテーブル移動の履歴を確認できます</span>
 </div>
 
+<!-- ★★★ 過去日付注文モード ★★★ -->
+<div style="margin-bottom:8px;">
+  <!-- チェックボックスのみ常時表示 -->
+  <label style="margin:0; display:inline-flex; align-items:center; gap:4px; font-size:13px; cursor:pointer;">
+    <input type="checkbox" id="past-order-mode-toggle" style="width:16px; height:16px; cursor:pointer;">
+    <span style="color:#92400e; font-weight:500;">過去日付注文モード</span>
+  </label>
+  
+  <!-- チェック時に展開表示される詳細コントロール -->
+  <div id="past-order-details" style="display:none; margin-top:8px; padding:10px; background:#fef3c7; border:1px solid #f59e0b; border-radius:6px;">
+    <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+      <input type="datetime-local" id="custom-order-date" style="padding:6px 8px; border:1px solid #d1d5db; border-radius:4px; font-size:14px;">
+      <button type="button" id="btn-set-date" style="padding:6px 12px; background:#2563eb; color:white; border:none; border-radius:4px; cursor:pointer; font-size:14px;">設定</button>
+      <button type="button" id="btn-clear-date" style="padding:6px 12px; background:#dc2626; color:white; border:none; border-radius:4px; cursor:pointer; font-size:14px;">クリア</button>
+      <span id="current-date-display" style="font-size:13px; color:#92400e; font-weight:600;"></span>
+    </div>
+  </div>
+</div>
+
 <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap:12px">
   {% for t in tables %}
     <div class="card">
@@ -431,5 +450,107 @@ async function doMove(){
   }catch(e){ alert('通信に失敗しました'); }
   finally{ if(btn){ btn.disabled = false; btn.textContent = btn.dataset.lbl || '実行'; } }
 }
+
+// ============================================================
+// 過去日付注文モード
+// ============================================================
+// アクティブな過去日付注文があるかチェック
+async function checkActiveOrders() {
+  try {
+    const response = await fetch('/api/orders/active_past_orders');
+    const data = await response.json();
+    return data.has_active_orders || false;
+  } catch (error) {
+    console.error('アクティブ注文のチェックに失敗:', error);
+    return false; // エラー時は解除を許可
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  const toggle = document.getElementById('past-order-mode-toggle');
+  const details = document.getElementById('past-order-details');
+  const dateInput = document.getElementById('custom-order-date');
+  const btnSet = document.getElementById('btn-set-date');
+  const btnClear = document.getElementById('btn-clear-date');
+  const display = document.getElementById('current-date-display');
+
+  // ページ読み込み時にlocalStorageから状態を復元
+  function loadState() {
+    const enabled = localStorage.getItem('pastOrderModeEnabled') === 'true';
+    const savedDate = localStorage.getItem('customOrderDate');
+    const source = localStorage.getItem('pastOrderModeSource');
+
+    toggle.checked = enabled;
+    details.style.display = enabled ? 'block' : 'none';
+
+    if (enabled && savedDate) {
+      // ISO形式 (YYYY-MM-DD HH:MM:SS) を datetime-local用に変換
+      const isoDate = savedDate.replace(' ', 'T').substring(0, 16);
+      dateInput.value = isoDate;
+      display.textContent = `設定中: ${savedDate}`;
+    } else {
+      display.textContent = '';
+    }
+  }
+
+  // トグル変更
+  toggle.addEventListener('change', async function() {
+    const enabled = toggle.checked;
+    
+    // モードをオフにしようとしている場合、アクティブなセッションをチェック
+    if (!enabled) {
+      const hasActiveOrders = await checkActiveOrders();
+      if (hasActiveOrders) {
+        alert('過去日付で注文中のセッションがあります。\n会計完了またはセッション初期化を行ってから解除してください。');
+        toggle.checked = true; // 元に戻す
+        return;
+      }
+    }
+    
+    details.style.display = enabled ? 'block' : 'none';
+
+    if (enabled) {
+      localStorage.setItem('pastOrderModeEnabled', 'true');
+    } else {
+      localStorage.removeItem('pastOrderModeEnabled');
+      localStorage.removeItem('customOrderDate');
+      localStorage.removeItem('pastOrderModeSource');
+      dateInput.value = '';
+      display.textContent = '';
+    }
+  });
+
+  // 日付を設定
+  btnSet.addEventListener('click', function() {
+    const val = dateInput.value;
+    if (!val) {
+      alert('日付を選択してください');
+      return;
+    }
+    // datetime-local形式 (YYYY-MM-DDTHH:mm) をバックエンド用に変換
+    const formatted = val.replace('T', ' ') + ':00';
+    localStorage.setItem('customOrderDate', formatted);
+    localStorage.setItem('pastOrderModeEnabled', 'true');
+    localStorage.setItem('pastOrderModeSource', 'floor');
+    display.textContent = `設定中: ${formatted}`;
+    alert(`過去日付が設定されました: ${formatted}`);
+  });
+
+  // 日付をクリア
+  btnClear.addEventListener('click', function() {
+    localStorage.removeItem('customOrderDate');
+    localStorage.removeItem('pastOrderModeEnabled');
+    localStorage.removeItem('pastOrderModeSource');
+    dateInput.value = '';
+    display.textContent = '';
+    toggle.checked = false;
+    dateInput.disabled = true;
+    btnSet.disabled = true;
+    btnClear.disabled = true;
+    alert('過去日付設定をクリアしました');
+  });
+
+  loadState();
+});
 </script>
 {% endblock %}

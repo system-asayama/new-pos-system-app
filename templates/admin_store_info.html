@@ -84,6 +84,10 @@
   .btn-secondary:hover {
     background: #4b5563;
   }
+  .btn-secondary:disabled {
+    background: #9ca3af;
+    cursor: not-allowed;
+  }
   .flash-message {
     padding: 12px 16px;
     border-radius: 4px;
@@ -162,6 +166,38 @@
     </div>
 
     <div class="form-group">
+      <label for="印刷サーバーURL">🖨️ レシート印刷サーバーURL</label>
+      
+      <!-- プリンタ設定から選択 -->
+      {% if printers %}
+      <div style="margin-bottom: 10px;">
+        <select id="printer-select" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 14px;">
+          <option value="">-- プリンタ設定から選択 --</option>
+          {% for p in printers %}
+          <option value="{{ p.connection }}">{{ p.name }} ({{ p.connection }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+      
+      <!-- 手動入力欄 -->
+      <div style="display: flex; gap: 8px; align-items: stretch;">
+        <input type="text" id="印刷サーバーURL" name="印刷サーバーURL" value="{{ store.printer_server_url or '' }}" placeholder="http://192.168.1.100:3001" style="flex: 1;">
+        <button type="button" id="btn-detect" class="btn btn-secondary" style="white-space: nowrap; padding: 10px 16px;">🔍 自動検出</button>
+        <button type="button" id="btn-migrate" class="btn btn-secondary" style="white-space: nowrap; padding: 10px 16px;">📥 移行</button>
+      </div>
+      
+      <div class="help-text">
+        レシート印刷サーバーのURL（例: http://192.168.1.100:3001）。<br>
+        • プリンタ設定から選択、または手動入力<br>
+        • 「🔍 自動検出」でネットワーク内のサーバーを探索<br>
+        • 「📥 移行」で既存のlocalStorage設定を取り込み<br>
+        • 空欄の場合は http://localhost:3001 が使用されます
+      </div>
+      <div id="detect-status" class="help-text" style="margin-top: 8px; color: #2563eb;"></div>
+    </div>
+
+    <div class="form-group">
       <label>👨‍🍳 調理中ステータスの使用</label>
       <div class="checkbox-group">
         <input type="checkbox" id="use_cooking_status" name="use_cooking_status" value="1" {{ 'checked' if store.use_cooking_status else '' }}>
@@ -176,4 +212,117 @@
     </div>
   </form>
 </div>
+
+<script>
+(function() {
+  const urlInput = document.getElementById('印刷サーバーURL');
+  const printerSelect = document.getElementById('printer-select');
+  const btnDetect = document.getElementById('btn-detect');
+  const btnMigrate = document.getElementById('btn-migrate');
+  const statusEl = document.getElementById('detect-status');
+
+  // 1. プリンタ設定から選択
+  if (printerSelect) {
+    printerSelect.addEventListener('change', function() {
+      if (this.value) {
+        urlInput.value = this.value;
+        statusEl.textContent = '✓ プリンタ設定から設定しました';
+        statusEl.style.color = '#059669';
+      }
+    });
+  }
+
+  // 2. ネットワーク自動検出
+  btnDetect.addEventListener('click', async function() {
+    btnDetect.disabled = true;
+    statusEl.textContent = '🔍 検出中...';
+    statusEl.style.color = '#2563eb';
+
+    try {
+      // 一般的なローカルIPレンジとポート3001をチェック
+      const candidates = [
+        'http://localhost:3001',
+        'http://127.0.0.1:3001',
+      ];
+
+      // 現在のホストの同じネットワークも試す
+      const currentHost = location.hostname;
+      if (currentHost && currentHost !== 'localhost' && currentHost !== '127.0.0.1') {
+        // IPアドレスの第3オクテットまで取得して.100をチェック
+        const parts = currentHost.split('.');
+        if (parts.length === 4) {
+          const baseIp = parts.slice(0, 3).join('.');
+          candidates.push(`http://${baseIp}.100:3001`);
+          candidates.push(`http://${baseIp}.1:3001`);
+        }
+      }
+
+      let found = null;
+      for (const url of candidates) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 2000);
+          
+          const res = await fetch(`${url}/health`, { 
+            signal: controller.signal,
+            mode: 'cors'
+          });
+          
+          clearTimeout(timeoutId);
+          
+          if (res.ok) {
+            found = url;
+            break;
+          }
+        } catch (e) {
+          // タイムアウトまたは接続失敗は無視
+        }
+      }
+
+      if (found) {
+        urlInput.value = found;
+        statusEl.textContent = `✓ 検出成功: ${found}`;
+        statusEl.style.color = '#059669';
+      } else {
+        statusEl.textContent = '⚠ サーバーが見つかりませんでした。手動で入力してください。';
+        statusEl.style.color = '#d97706';
+      }
+    } catch (e) {
+      statusEl.textContent = '⚠ 検出エラー: ' + e.message;
+      statusEl.style.color = '#dc2626';
+    } finally {
+      btnDetect.disabled = false;
+    }
+  });
+
+  // 3. localStorage から移行
+  btnMigrate.addEventListener('click', function() {
+    const oldUrl = localStorage.getItem('printerServerUrl');
+    if (oldUrl) {
+      urlInput.value = oldUrl;
+      statusEl.textContent = `✓ 既存設定を取り込みました: ${oldUrl}`;
+      statusEl.style.color = '#059669';
+      
+      if (confirm('既存のlocalStorage設定を削除しますか？\n（保存ボタンを押すまで、この設定は反映されません）')) {
+        localStorage.removeItem('printerServerUrl');
+        statusEl.textContent += ' (localStorage削除済み)';
+      }
+    } else {
+      statusEl.textContent = '⚠ localStorage に設定が見つかりません';
+      statusEl.style.color = '#d97706';
+    }
+  });
+
+  // ページ読み込み時に自動移行を提案
+  window.addEventListener('DOMContentLoaded', function() {
+    const oldUrl = localStorage.getItem('printerServerUrl');
+    const currentUrl = urlInput.value.trim();
+    
+    if (oldUrl && !currentUrl) {
+      statusEl.textContent = `💡 既存設定を検出しました。「📥 移行」ボタンで取り込めます。`;
+      statusEl.style.color = '#2563eb';
+    }
+  });
+})();
+</script>
 {% endblock %}

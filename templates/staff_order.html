@@ -484,6 +484,17 @@ async function submitOrder(){
       return item;
     })
   };
+
+  // 過去日付注文モードの確認
+  const pastOrderModeEnabled = localStorage.getItem('pastOrderModeEnabled') === 'true';
+  const customOrderDate = localStorage.getItem('customOrderDate');
+  if (pastOrderModeEnabled && customOrderDate) {
+    payload.custom_date = customOrderDate;
+    console.log('[staff_order] 過去日付モード有効:', customOrderDate);
+  } else {
+    console.log('[staff_order] 通常モード');
+  }
+
   try{
     const res = await fetch('{{ url_for("staff_api_order") }}', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
     const j = await res.json();

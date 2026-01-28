@@ -1407,6 +1407,7 @@ class Store(TenantScoped, Base):
     registration_number = Column("登録番号", String, nullable=True)  # インボイス登録番号
     business_hours = Column("営業時間", String, nullable=True)  # 営業時間
     receipt_footer = Column("レシートフッター", Text, nullable=True)  # レシート下部のメッセージ
+    printer_server_url = Column("印刷サーバーURL", String, nullable=True)  # レシート印刷サーバーのURL (例: http://192.168.1.100:3001)
 
     created_at = Column("作成日時", String, nullable=False, default=now_str)
     updated_at = Column("更新日時", String, nullable=False, default=now_str)
@@ -1551,7 +1552,8 @@ class OrderItem(TenantScoped, Base):
     actual_price = Column("実際価格", Integer, nullable=True)  # 時価商品の場合、会計時に入力された実際の価格
     memo = Column("メモ", Text)
     status = Column("状態", String, nullable=False, default="新規")  # 新規/調理中/提供済/取消
-    added_at = Column("追加日時", DateTime(timezone=True), nullable=False, default=lambda: datetime.utcnow())
+    added_at = Column("追加日時", DateTime(timezone=True), nullable=False)
+    scheduled_date = Column("売上計上日", DateTime(timezone=True), nullable=True)  # 過去日付モードで注文された場合の売上計上日
     store = relationship("Store")
     order = relationship("OrderHeader", back_populates="items")
     menu = relationship("Menu")
@@ -2063,6 +2065,8 @@ def migrate_schema_if_needed():
                 conn.exec_driver_sql('ALTER TABLE "M_店舗" ADD COLUMN "営業時間" TEXT')
             if "レシートフッター" not in cols:
                 conn.exec_driver_sql('ALTER TABLE "M_店舗" ADD COLUMN "レシートフッター" TEXT')
+            if "印刷サーバーURL" not in cols:
+                conn.exec_driver_sql('ALTER TABLE "M_店舗" ADD COLUMN "印刷サーバーURL" VARCHAR')
             if "調理中ステータス使用" not in cols:
                 conn.exec_driver_sql('ALTER TABLE "M_店舗" ADD COLUMN "調理中ステータス使用" INTEGER NOT NULL DEFAULT 1')
 
@@ -5882,6 +5886,7 @@ def staff_api_order_item_status(item_id: int):
                 (["name","名称"], ["name","名称"]),
                 (["unit_price","単価","税抜単価"], ["unit_price","単価","税抜単価"]),
                 (["税込単価"], ["税込単価","price_incl"]),
+                (["scheduled_date","売上計上日"], ["scheduled_date","売上計上日"]),
             ])
             _set_first(neg, ["qty","数量"], -int(count))
             _set_first(neg, ["税率","tax_rate"], float(tax_rate if tax_rate is not None else 0.10))
@@ -5902,6 +5907,7 @@ def staff_api_order_item_status(item_id: int):
             if hasattr(neg, "created_at"): neg.created_at = now
             if hasattr(neg, "updated_at"): neg.updated_at = now
             if hasattr(neg, "追加日時"):   setattr(neg, "追加日時", now)
+            if hasattr(neg, "added_at"):   neg.added_at = now
 
             s.add(neg)
             s.flush()  # id 取得
@@ -6008,6 +6014,13 @@ def admin_store_info():
         if not store:
             abort(404)
         
+        # プリンタ一覧を取得（printer_server タイプのみ）
+        printers = []
+        q = s.query(Printer).filter(Printer.kind == "printer_server")
+        if hasattr(Printer, "store_id"):
+            q = q.filter(Printer.store_id == sid)
+        printers = q.order_by(Printer.id).all()
+        
         if request.method == "POST":
             # フォームからデータを取得して保存
             store.address = request.form.get("住所", "").strip()
@@ -6015,6 +6028,7 @@ def admin_store_info():
             store.registration_number = request.form.get("登録番号", "").strip()
             store.business_hours = request.form.get("営業時間", "").strip()
             store.receipt_footer = request.form.get("レシートフッター", "").strip()
+            store.printer_server_url = request.form.get("印刷サーバーURL", "").strip()
             
             # 調理中ステータス使用フラグ
             store.use_cooking_status = 1 if request.form.get("use_cooking_status") == "1" else 0
@@ -6026,8 +6040,39 @@ def admin_store_info():
         # GETリクエスト：編集フォームを表示
         return render_template(
             "admin_store_info.html",
-            store=store
+            store=store,
+            printers=printers
         )
+    finally:
+        s.close()
+        SessionLocal.remove()
+
+
+# --- API: 店舗設定取得（印刷サーバーURL等） ---
+@app.route("/api/store/settings")
+@require_store_admin
+def api_store_settings():
+    """店舗設定をJSON形式で返すAPI（主に印刷サーバーURL取得用）"""
+    sid = current_store_id()
+    if sid is None:
+        return jsonify({"ok": False, "error": "store_id not found"}), 400
+    
+    s = SessionLocal()
+    try:
+        store = s.get(Store, sid)
+        if not store:
+            return jsonify({"ok": False, "error": "store not found"}), 404
+        
+        return jsonify({
+            "ok": True,
+            "printer_server_url": store.printer_server_url or "http://localhost:3001",
+            "store_name": store.name,
+            "address": store.address,
+            "phone": store.phone,
+            "registration_number": store.registration_number,
+            "business_hours": store.business_hours,
+            "receipt_footer": store.receipt_footer
+        })
     finally:
         s.close()
         SessionLocal.remove()
@@ -6083,6 +6128,20 @@ def admin_table_sales():
     table_id = request.args.get("table_id", type=int)
     from_s  = request.args.get("from")  # YYYY-MM-DD
     to_s    = request.args.get("to")    # YYYY-MM-DD
+    
+    # 初期アクセス時（from/toが未指定）は今月の範囲を自動設定
+    if not from_s and not to_s:
+        today = datetime.now(timezone.utc)
+        # 今月の初日
+        first_day = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        # 今月の最終日
+        if today.month == 12:
+            last_day = today.replace(year=today.year + 1, month=1, day=1) - timedelta(days=1)
+        else:
+            last_day = today.replace(month=today.month + 1, day=1) - timedelta(days=1)
+        from_s = first_day.strftime("%Y-%m-%d")
+        to_s = last_day.strftime("%Y-%m-%d")
+    
     dt_from = _parse_date(from_s) if from_s else None
     dt_to   = _parse_date(to_s) + timedelta(days=1) if to_s else None  # 終日含め +1日
 
@@ -13258,7 +13317,7 @@ def api_order():
     """
     パブリック（QR）側の注文API
     POST JSON:
-      { "token": "<qr token>", "items": [{"menu_id": 3, "qty": 2, "memo": "辛め"}] }
+      { "token": "<qr token>", "items": [{"menu_id": 3, "qty": 2, "memo": "辛め"}], "custom_date": "YYYY-MM-DD HH:MM:SS" }
     """
     import math
     import logging
@@ -13266,6 +13325,12 @@ def api_order():
     data = request.get_json(force=True) or {}
     token = (data.get("token") or "").strip()
     items = data.get("items") or []
+    custom_date_str = data.get("custom_date")  # 過去日付注文用
+    
+    # デバッグ: custom_dateの受信確認
+    if custom_date_str:
+        app.logger.info(f"[api_order] 過去日付モード: custom_date={custom_date_str}")
+    
     if not token or not isinstance(items, list) or not items:
         return jsonify({"ok": False, "error": "token/items required"}), 400
 
@@ -13486,6 +13551,28 @@ def api_order():
                 unit = int(actual_price)
                 app.logger.info("[api_order] market price item: menu_id=%s actual_price=%s", mid, unit)
 
+            # 過去日付注文モードの処理
+            from datetime import datetime
+            if custom_date_str:
+                try:
+                    custom_datetime = datetime.strptime(custom_date_str, "%Y-%m-%d %H:%M:%S")
+                    added_at_value = custom_datetime
+                    item_status = "提供済"  # 過去日付の場合はKDSに表示しない
+                    scheduled_date_value = custom_datetime
+                    # メモに登録予定日時を追加
+                    date_memo = f"[登録予定: {custom_date_str}]"
+                    memo = f"{date_memo} {memo}".strip() if memo else date_memo
+                    app.logger.info(f"[api_order] 過去日付で登録: added_at={added_at_value}, status={item_status}, scheduled_date={scheduled_date_value}")
+                except Exception as parse_err:
+                    app.logger.warning("[api_order] custom_date parse failed: %s", parse_err)
+                    added_at_value = datetime.now()
+                    item_status = "新規"
+                    scheduled_date_value = None
+            else:
+                added_at_value = datetime.now()
+                item_status = "新規"
+                scheduled_date_value = None
+
             new_item = OrderItem(
                 order_id=order.id,
                 menu_id=mid,
@@ -13493,8 +13580,9 @@ def api_order():
                 unit_price=unit,   # 税抜単価
                 tax_rate=rate,
                 memo=memo,
-                status="新規",
-                added_at=now_str(),
+                status=item_status,
+                added_at=added_at_value,
+                scheduled_date=scheduled_date_value,
             )
             # 店舗IDを設定（Pythonの属性名を使用）
             if store_id is not None and hasattr(new_item, "store_id"):
@@ -14653,13 +14741,20 @@ def staff_api_order():
     """
     スタッフ用の注文 API（/api/order の table_id 版）
     POST JSON:
-      { "table_id": 1, "items": [{"menu_id": 3, "qty": 2, "memo": "辛め"}] }
+      { "table_id": 1, "items": [{"menu_id": 3, "qty": 2, "memo": "辛め"}], "custom_date": "2024-01-01 12:00:00" }
+    - custom_date: 過去日付注文モード用（オプション）
     """
     import math  # floor を使うため（ローカルインポート）
 
     data = request.get_json(force=True) or {}
     table_id_raw = data.get("table_id")
     items = data.get("items") or []
+    custom_date_str = data.get("custom_date")  # 過去日付注文モード
+    
+    # デバッグ: custom_dateの受信確認
+    if custom_date_str:
+        app.logger.info(f"[staff_api_order] 過去日付モード: custom_date={custom_date_str}")
+    
     if table_id_raw is None or not isinstance(items, list) or not items:
         return jsonify({"ok": False, "error": "table_id/items required"}), 400
 
@@ -14842,6 +14937,28 @@ def staff_api_order():
                 unit = int(actual_price)
                 app.logger.info("[staff_api_order] market price item: menu_id=%s actual_price=%s", mid, unit)
 
+            # 過去日付注文モードの処理
+            from datetime import datetime
+            if custom_date_str:
+                try:
+                    custom_datetime = datetime.strptime(custom_date_str, "%Y-%m-%d %H:%M:%S")
+                    added_at_value = custom_datetime
+                    item_status = "提供済"  # 過去日付の場合はKDSに表示しない
+                    scheduled_date_value = custom_datetime
+                    # メモに登録予定日時を追加
+                    date_memo = f"[登録予定: {custom_date_str}]"
+                    memo = f"{date_memo} {memo}".strip() if memo else date_memo
+                    app.logger.info(f"[staff_api_order] 過去日付で登録: added_at={added_at_value}, status={item_status}, scheduled_date={scheduled_date_value}")
+                except Exception as parse_err:
+                    app.logger.warning("[staff_api_order] custom_date parse failed: %s", parse_err)
+                    added_at_value = datetime.now()
+                    item_status = "新規"
+                    scheduled_date_value = None
+            else:
+                added_at_value = datetime.now()
+                item_status = "新規"
+                scheduled_date_value = None
+
             new_item = OrderItem(
                 order_id=order.id,
                 menu_id=mid,
@@ -14849,8 +14966,9 @@ def staff_api_order():
                 unit_price=unit,   # 税抜単価
                 tax_rate=rate,
                 memo=memo,
-                status="新規",
-                added_at=now_str(),
+                status=item_status,
+                added_at=added_at_value,
+                scheduled_date=scheduled_date_value,
             )
             
             # actual_priceをOrderItemに保存
@@ -15011,6 +15129,7 @@ def _progress_update_core(item_id: int):
                 (["name","名称"], ["name","名称"]),
                 (["unit_price","単価","税抜単価"], ["unit_price","単価","税抜単価"]),
                 (["税込単価"], ["税込単価","price_incl"]),
+                (["scheduled_date","売上計上日"], ["scheduled_date","売上計上日"]),
             ])
             _set_first(neg, ["qty","数量"], -int(moved))
             _set_first(neg, ["税率","tax_rate"], float(tax_rate if tax_rate is not None else 0.10))
@@ -15031,6 +15150,7 @@ def _progress_update_core(item_id: int):
             if hasattr(neg, "created_at"): neg.created_at = now
             if hasattr(neg, "updated_at"): neg.updated_at = now
             if hasattr(neg, "追加日時"):   setattr(neg, "追加日時", now)
+            if hasattr(neg, "added_at"):   neg.added_at = now
             s.add(neg); s.flush()
             neg_id = getattr(neg, "id", None)
 
@@ -15379,39 +15499,79 @@ def sales_report():
         by_method = [{"name": (n or "-"), "amount": int(a or 0)} for (n, a) in by_method_rows]
 
         # ===== 日別（OrderItemから再計算：取り消しを除外） =====
-        daily = defaultdict(lambda: {"orders": 0, "subtotal": 0, "tax": 0, "total": 0, "guests": 0})
+        # 過去日付モード判定：scheduled_dateが存在する場合は過去日付モードで登録された注文
+        daily = defaultdict(lambda: {"orders": set(), "subtotal": 0, "tax": 0, "total": 0, "guests": set()})
+        
+        past_date_count = 0
+        normal_count = 0
+        
         for o in orders:
-            closed_at = getattr(o, "closed_at", None)
-            if closed_at:
-                # datetime型を文字列に変換してから日付部分を取得
-                day = str(closed_at)[:10] if isinstance(closed_at, datetime) else str(closed_at)[:10]
-            else:
-                day = ""
-            if not day:
-                continue
-            
             oid = getattr(o, "id", None)
             if not oid:
                 continue
             
-            # この注文の明細から実売上を計算
+            # この注文の会計完了日時を取得
+            closed_at = getattr(o, "closed_at", None)
+            
+            # この注文の明細を取得
             items = items_by_order.get(oid, [])
-            totals = _calculate_order_totals(items)
             
-            d = daily[day]
-            d["orders"]   += 1
-            d["subtotal"] += totals["subtotal"]
-            d["tax"]      += totals["tax"]
-            d["total"]    += totals["total"]
-            
-            # 注文ごとの人数を加算（履歴が無ければ 1）
-            g = guests_map.get(oid) if oid is not None else None
-            if g is None:
-                g = 1
-            try:
-                d["guests"] += max(0, int(g))
-            except Exception:
-                d["guests"] += 0
+            # 明細を日付ごとに振り分ける
+            for it in items:
+                st = getattr(it, "status", None) or getattr(it, "item_status", None) or ""
+                
+                # 取消は除外
+                if "取消" in str(st) or "キャンセル" in str(st):
+                    continue
+                
+                # scheduled_dateが存在する場合は過去日付モードで登録された注文
+                scheduled_date = getattr(it, "scheduled_date", None)
+                
+                if scheduled_date:
+                    # 過去日付モード：scheduled_dateを使用
+                    date_value = scheduled_date
+                    past_date_count += 1
+                elif closed_at:
+                    # 通常注文：closed_atを使用
+                    date_value = closed_at
+                    normal_count += 1
+                else:
+                    # closed_atもない場合はadded_atを使用
+                    date_value = getattr(it, "added_at", None)
+                    normal_count += 1
+                
+                if date_value:
+                    day = str(date_value)[:10] if isinstance(date_value, datetime) else str(date_value)[:10]
+                else:
+                    continue
+                
+                # 金額計算
+                qty = getattr(it, "qty", 0)
+                unit = getattr(it, "unit_price", 0)
+                rate = getattr(it, "tax_rate", 0.0)
+                
+                subtotal = qty * unit
+                tax = int(subtotal * rate)
+                total = subtotal + tax
+                
+                d = daily[day]
+                d["subtotal"] += subtotal
+                d["tax"] += tax
+                d["total"] += total
+                d["orders"].add(oid)
+                
+                # 人数を追加（注文IDごとに1回だけ）
+                g = guests_map.get(oid)
+                if g and g > 0:
+                    d["guests"].add((oid, g))
+        
+        app.logger.debug(f"[sales_report] 過去日付明細: {past_date_count}, 通常明細: {normal_count}")
+        
+        # setをcountに変換
+        for day, d in daily.items():
+            d["orders"] = len(d["orders"])
+            guests_sum = sum(g for (_, g) in d["guests"])
+            d["guests"] = guests_sum if guests_sum > 0 else d["orders"]
 
         # avg_per_guest を付与してテンプレへ
         days = []
@@ -15545,26 +15705,56 @@ def api_sales_daily():
         order_day = {}   # order_id -> 'YYYY-MM-DD'
         order_ids = []
         for o in orders:
-            closed_at = getattr(o, "closed_at", None)
-            if closed_at:
-                # datetime型を文字列に変換してから日付部分を取得
-                day = str(closed_at)[:10] if isinstance(closed_at, datetime) else str(closed_at)[:10]
-            else:
-                day = ""
-            if not day:
-                # closed_atが無い/壊れている場合は opened_at にフォールバック
-                opened_at = getattr(o, "opened_at", None)
-                if opened_at:
-                    day = str(opened_at)[:10] if isinstance(opened_at, datetime) else str(opened_at)[:10]
-                else:
-                    day = ""
-                if not day:
-                    continue
-            
             oid = getattr(o, "id", None)
-            if oid is not None:
+            if oid is None:
+                continue
+            order_ids.append(oid)
+        
+        # 全注文の明細を取得してscheduled_dateをチェック
+        if order_ids:
+            qi_all_temp = s.query(OrderItem).filter(OrderItem.order_id.in_(order_ids)).all()
+            items_by_order_temp = defaultdict(list)
+            for it in qi_all_temp:
+                oid_temp = getattr(it, "order_id", None)
+                if oid_temp:
+                    items_by_order_temp[oid_temp].append(it)
+            
+            # 各注文の日付を決定（scheduled_date優先、なければclosed_at）
+            for o in orders:
+                oid = getattr(o, "id", None)
+                if oid is None:
+                    continue
+                    
+                # scheduled_dateをチェック
+                items_temp = items_by_order_temp.get(oid, [])
+                scheduled_date = None
+                for it in items_temp:
+                    sd = getattr(it, "scheduled_date", None)
+                    if sd:
+                        scheduled_date = sd
+                        break
+                
+                if scheduled_date:
+                    # scheduled_dateがある場合はそれを使用
+                    day = str(scheduled_date)[:10] if isinstance(scheduled_date, datetime) else str(scheduled_date)[:10]
+                else:
+                    # scheduled_dateがない場合は従来通りclosed_atを使用
+                    closed_at = getattr(o, "closed_at", None)
+                    if closed_at:
+                        day = str(closed_at)[:10] if isinstance(closed_at, datetime) else str(closed_at)[:10]
+                    else:
+                        day = ""
+                    if not day:
+                        # closed_atが無い/壊れている場合は opened_at にフォールバック
+                        opened_at = getattr(o, "opened_at", None)
+                        if opened_at:
+                            day = str(opened_at)[:10] if isinstance(opened_at, datetime) else str(opened_at)[:10]
+                        else:
+                            day = ""
+                        if not day:
+                            continue
+                
                 order_day[oid] = day
-                order_ids.append(oid)
         
         # 全注文の明細を取得してOrderItemから再計算（取り消しを除外）
         if order_ids:
@@ -15731,6 +15921,52 @@ def api_sales_daily():
         SessionLocal.remove()
 
 
+# ---------------------------------------------------------------------
+# API: アクティブな過去日付注文の確認
+# ---------------------------------------------------------------------
+@app.route("/api/orders/active_past_orders")
+def api_check_active_past_orders():
+    """
+    scheduled_dateが設定されている未会計の注文があるかチェック
+    過去日付モードを解除する前に確認するためのAPI
+    """
+    s = SessionLocal()
+    try:
+        sid = current_store_id()
+        
+        # OrderHeaderとOrderItemをJOINして、scheduled_dateがあり未会計の注文を検索
+        q = (
+            s.query(OrderHeader.id)
+             .join(OrderItem, OrderHeader.id == OrderItem.order_id)
+             .filter(
+                 OrderItem.scheduled_date.isnot(None),
+                 OrderHeader.closed_at.is_(None),  # 未会計
+                 OrderHeader.status != "会計済"
+             )
+        )
+        
+        if hasattr(OrderHeader, "store_id") and sid is not None:
+            q = q.filter(OrderHeader.store_id == sid)
+        
+        # 少なくとも1件でもあればTrue
+        active_count = q.distinct().count()
+        
+        return jsonify({
+            "ok": True,
+            "has_active_orders": active_count > 0,
+            "count": active_count
+        })
+        
+    except Exception as e:
+        app.logger.error(f"[api_check_active_past_orders] error: {e}", exc_info=True)
+        return jsonify({
+            "ok": False,
+            "has_active_orders": False,
+            "error": str(e)
+        }), 500
+    finally:
+        s.close()
+        SessionLocal.remove()
 
 
 # ---------------------------------------------------------------------
@@ -16253,7 +16489,7 @@ def api_sales_hourly():
 # 店員呼び出しAPI
 # =========================================================
 # 店員呼び出し状態を保持するグローバル変数（簡易実装）
-_staff_calls = []  # [{"table_no": "1", "timestamp": 1234567890, "store_id": 1}]
+_staff_calls = []  # [{"table_no": "1", "timestamp": 1234567890, "store_id": 1, "confirmed": False}]
 _staff_calls_lock = threading.Lock()
 
 @app.route("/api/staff_call", methods=["POST"])
@@ -16293,11 +16529,12 @@ def api_staff_call():
             _staff_calls.append({
                 "table_no": table_no,
                 "timestamp": int(time.time()),
-                "store_id": store_id
+                "store_id": store_id,
+                "confirmed": False
             })
-            # 古い呼び出しを削除（60秒以上前）
+            # 古い呼び出しを削除（60秒以上前または確認済み）
             cutoff = int(time.time()) - 60
-            _staff_calls = [c for c in _staff_calls if c["timestamp"] > cutoff]
+            _staff_calls = [c for c in _staff_calls if c["timestamp"] > cutoff and not c["confirmed"]]
         
         # ログに記録
         app.logger.info(f"[STAFF_CALL] テーブル {table_no} から店員呼び出し")
@@ -16320,20 +16557,54 @@ def api_staff_call_poll():
     global _staff_calls
     try:
         sid = current_store_id()
-        since = int(request.args.get("since", "0"))
         
         with _staff_calls_lock:
-            # 店舗IDでフィルタリング
+            # 店舗IDでフィルタリングし、未確認の呼び出しをすべて返す
             calls = [
                 {"table_no": c["table_no"], "timestamp": c["timestamp"]}
                 for c in _staff_calls
-                if c["timestamp"] > since and (sid is None or c["store_id"] == sid)
+                if not c["confirmed"] and (sid is None or c["store_id"] == sid)
             ]
         
         return jsonify({"ok": True, "calls": calls})
     
     except Exception as e:
         app.logger.error(f"[api_staff_call_poll] error: {e}", exc_info=True)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/staff_call/confirm", methods=["POST"])
+@require_any
+def api_staff_call_confirm():
+    """
+    店員呼び出しを確認したことを記録するAPI
+    POST JSON:
+      { "table_no": "<テーブル番号>", "timestamp": <タイムスタンプ> }
+    
+    レスポンス:
+      { "ok": true }
+    """
+    global _staff_calls
+    try:
+        data = request.get_json(force=True) or {}
+        table_no = data.get("table_no")
+        timestamp = data.get("timestamp")
+        
+        if not table_no or timestamp is None:
+            return jsonify({"ok": False, "error": "table_no and timestamp are required"}), 400
+        
+        with _staff_calls_lock:
+            # 該当する呼び出しを確認済みにする
+            for call in _staff_calls:
+                if call["table_no"] == table_no and call["timestamp"] == timestamp:
+                    call["confirmed"] = True
+                    app.logger.info(f"[STAFF_CALL_CONFIRM] テーブル {table_no} の呼び出しを確認")
+                    break
+        
+        return jsonify({"ok": True})
+    
+    except Exception as e:
+        app.logger.error(f"[api_staff_call_confirm] error: {e}", exc_info=True)
         return jsonify({"ok": False, "error": str(e)}), 500
 
 

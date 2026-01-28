@@ -185,6 +185,10 @@
         <small id="pin-exp" class="muted"></small>
         <button type="button" class="btn sub" id="pin-copy" style="padding:4px 8px">コピー</button>
       </span>
+      <!-- ★★★ 過去日付モード表示 ★★★ -->
+      <span id="past-date-pill" class="pill" style="display:none; background:#fef3c7; border:1px solid #f59e0b; color:#92400e; font-weight:600;">
+        登録予定: <strong id="past-date-display"></strong>
+      </span>
       <!-- ★★★ 追加ここまで ★★★ -->
     </div>
   </header>
@@ -375,6 +379,26 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
   // ===================== ★★★ 合流PIN ここまで ★★★ =====================
+
+  // ===================== ★★★ 過去日付モード表示 ★★★ =====================
+  const pastDatePill = document.getElementById('past-date-pill');
+  const pastDateDisplay = document.getElementById('past-date-display');
+  
+  function checkPastOrderMode() {
+    const enabled = localStorage.getItem('pastOrderModeEnabled') === 'true';
+    const savedDate = localStorage.getItem('customOrderDate');
+    
+    if (enabled && savedDate && pastDatePill && pastDateDisplay) {
+      pastDateDisplay.textContent = savedDate;
+      pastDatePill.style.display = 'inline-flex';
+    } else if (pastDatePill) {
+      pastDatePill.style.display = 'none';
+    }
+  }
+  
+  // ページ読み込み時にチェック
+  checkPastOrderMode();
+  // ===================== ★★★ 過去日付モード ここまで ★★★ =====================
 
   // ===================== 基本参照 =====================
   const categoryList = document.getElementById('category-list');
@@ -1052,6 +1076,16 @@ document.addEventListener('DOMContentLoaded', () => {
       if(tableId==null){ msgEl.textContent='table_id を取得できません。URL に ?table_id= またはテンプレート埋め込みが必要です。'; return; }
       endpoint='/admin/api/order';
       payload={ items, memo, table_id:tableId }; if(orderId!=null) payload.order_id=orderId;
+    }
+
+    // 過去日付注文モードの確認
+    const pastOrderModeEnabled = localStorage.getItem('pastOrderModeEnabled') === 'true';
+    const customOrderDate = localStorage.getItem('customOrderDate');
+    if (pastOrderModeEnabled && customOrderDate) {
+      payload.custom_date = customOrderDate;
+      console.log('[menu_page] 過去日付モード有効:', customOrderDate);
+    } else {
+      console.log('[menu_page] 通常モード');
     }
 
     submitting = true;

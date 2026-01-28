@@ -461,8 +461,7 @@ window.playStaffCall = async function(){
 };
 
 /* ====== 店員呼び出しポーリング ====== */
-let lastStaffCallTimestamp = 0;
-let activeCalls = new Set(); // 現在表示中の呼び出し
+let activeCalls = new Map(); // 現在表示中の呼び出し - key: table_no, value: {timestamp}
 
 function updateStaffCallDisplay() {
   const alertEl = document.getElementById('staff-call-alert');
@@ -471,7 +470,7 @@ function updateStaffCallDisplay() {
   console.log('[updateStaffCallDisplay] activeCalls:', activeCalls, 'size:', activeCalls.size);
   
   if (activeCalls.size > 0) {
-    const tableList = Array.from(activeCalls).sort((a, b) => {
+    const tableList = Array.from(activeCalls.keys()).sort((a, b) => {
       // 数値としてソートを試みる
       const numA = parseInt(a);
       const numB = parseInt(b);
@@ -482,6 +481,7 @@ function updateStaffCallDisplay() {
     // リストを再構築
     listEl.innerHTML = '';
     tableList.forEach(tableNo => {
+      const callInfo = activeCalls.get(tableNo);
       const itemDiv = document.createElement('div');
       itemDiv.style.cssText = 'display:flex; align-items:center; justify-content:space-between; background:#fff; padding:8px 12px; border-radius:6px; border:1px solid #f59e0b;';
       
@@ -493,9 +493,25 @@ function updateStaffCallDisplay() {
       confirmBtn.type = 'button';
       confirmBtn.style.cssText = 'padding:6px 12px; background:#10b981; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:600; font-size:14px;';
       confirmBtn.textContent = '確認';
-      confirmBtn.onclick = () => {
-        activeCalls.delete(tableNo);
-        updateStaffCallDisplay();
+      confirmBtn.onclick = async () => {
+        try {
+          // サーバーに確認を通知
+          const res = await fetch('/api/staff_call/confirm', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ table_no: tableNo, timestamp: callInfo.timestamp })
+          });
+          const data = await res.json();
+          if (data && data.ok) {
+            console.log('[confirmStaffCall] Confirmed:', tableNo);
+            activeCalls.delete(tableNo);
+            updateStaffCallDisplay();
+          } else {
+            console.error('[confirmStaffCall] Failed:', data);
+          }
+        } catch (e) {
+          console.error('[confirmStaffCall] Error:', e);
+        }
       };
       
       itemDiv.appendChild(tableText);
@@ -512,30 +528,33 @@ function updateStaffCallDisplay() {
 
 async function checkStaffCalls(){
   try{
-    const url = '/api/staff_call/poll?since=' + lastStaffCallTimestamp;
+    const url = '/api/staff_call/poll';
     const res = await fetch(url, { cache: 'no-store' });
     const data = await res.json();
     
     if (DEBUG_KDS) console.log('[KDS STAFF_CALL]', data);
     
-    if (data && data.ok && data.calls && data.calls.length > 0) {
-      // 新しい呼び出しがあれば音声再生と表示追加
-      console.log('[checkStaffCalls] Received calls:', data.calls);
-      data.calls.forEach(call => {
-        console.log('[checkStaffCalls] Processing call:', call, 'table_no:', call.table_no, 'timestamp:', call.timestamp, 'lastStaffCallTimestamp:', lastStaffCallTimestamp);
-        if (call.timestamp > lastStaffCallTimestamp) {
-          lastStaffCallTimestamp = call.timestamp;
+    if (data && data.ok) {
+      const serverCalls = data.calls || [];
+      
+      // サーバーから返ってきた呼び出しのMapを作成
+      const serverCallsMap = new Map();
+      serverCalls.forEach(call => {
+        serverCallsMap.set(call.table_no, { timestamp: call.timestamp });
+      });
+      
+      // 新しい呼び出しを検出して音声再生
+      serverCalls.forEach(call => {
+        if (!activeCalls.has(call.table_no)) {
           console.log('[checkStaffCalls] New call from table:', call.table_no);
-          
-          // 呼び出しリストに追加
-          activeCalls.add(call.table_no);
-          console.log('[checkStaffCalls] Added to activeCalls, now size:', activeCalls.size);
-          updateStaffCallDisplay();
-          
           // 音声再生
           window.playStaffCall();
         }
       });
+      
+      // サーバーの状態に同期（確認済みの呼び出しを削除）
+      activeCalls = serverCallsMap;
+      updateStaffCallDisplay();
     }
   }catch(e){
     console.error('[KDS] checkStaffCalls failed:', e);
