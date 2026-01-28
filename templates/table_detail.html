@@ -639,10 +639,21 @@
     
     try {
       for (const itemId of itemIds) {
+        // 明細行から数量を取得
+        const row = document.querySelector(`tr[data-item-id="${itemId}"]`);
+        let count = 1;
+        if (row) {
+          const qtyCell = row.querySelector('td:nth-child(4)');
+          if (qtyCell) {
+            const qty = Math.abs(Number(qtyCell.textContent || 0));
+            if (qty > 0) count = qty;
+          }
+        }
+        
         const res = await fetch(`/staff/api/order_item/${itemId}/status`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: status })
+          body: JSON.stringify({ status: status, count: count })
         });
         if (!res.ok) {
           throw new Error(`明細ID ${itemId} の更新に失敗しました`);
