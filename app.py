@@ -14958,37 +14958,52 @@ def _progress_update_core(item_id: int):
     from datetime import datetime
     s = SessionLocal()
     try:
+        app.logger.info("[DEBUG-CANCEL] Step 1: Starting _progress_update_core for item_id=%s", item_id)
         j = request.get_json(force=True) or {}
         raw_status = (j.get("status") or "").strip()
         count  = int(j.get("count") or 1)
+        app.logger.info("[DEBUG-CANCEL] Step 2: raw_status=%s, count=%s", raw_status, count)
         if count <= 0:
             return jsonify(ok=False, error="count must be >= 1"), 400
 
         action = _norm_status(raw_status)
+        app.logger.info("[DEBUG-CANCEL] Step 3: action=%s", action)
         if action not in {"cooking","served","cancel","new"}:
             return jsonify(ok=False, error="invalid status"), 400
 
         OrderItem, Menu = _models()
+        app.logger.info("[DEBUG-CANCEL] Step 4: _models() returned OrderItem=%s, Menu=%s", OrderItem, Menu)
         it = s.get(OrderItem, item_id)
+        app.logger.info("[DEBUG-CANCEL] Step 5: Got item=%s", it)
         if not it:
             return jsonify(ok=False, error="item not found"), 404
 
         # 進捗行シード（未作成なら qty_new=元数量）
+        app.logger.info("[DEBUG-CANCEL] Step 6: Calling progress_seed_if_needed")
         progress_seed_if_needed(s, it)
 
         # 取消時は負行作成に必要な税率を先に確保
         tax_rate = None
         if action == "cancel":
+            app.logger.info("[DEBUG-CANCEL] Step 7: action is cancel, getting tax_rate")
             menu_id = _get_any(it, "menu_id", "メニューid", "商品id")
             menu = s.get(Menu, menu_id) if menu_id is not None else None
             tax_rate = _guess_tax_rate(src_item=it, menu=menu)
+            app.logger.info("[DEBUG-CANCEL] Step 8: tax_rate=%s", tax_rate)
 
         # 実移動
         try:
+            app.logger.info("[DEBUG-CANCEL] Step 9: Calling progress_move")
             p_after, moved = progress_move(s, it, action, count)
+            app.logger.info("[DEBUG-CANCEL] Step 10: progress_move returned p_after=%s, moved=%s", p_after, moved)
         except ValueError as e:
+            app.logger.error("[DEBUG-CANCEL] ValueError in progress_move: %s", e)
             s.rollback()
             return jsonify(ok=False, error=str(e)), 400
+        except Exception as e:
+            app.logger.exception("[DEBUG-CANCEL] Exception in progress_move: %s", e)
+            s.rollback()
+            return jsonify(ok=False, error=f"progress_move error: {type(e).__name__}: {str(e)}"), 500
 
         # ★★★ 追加：明細の status を進捗カウンタに同期 ★★★
         try:
@@ -15021,8 +15036,10 @@ def _progress_update_core(item_id: int):
 
         neg_id = None
         if action == "cancel" and moved > 0:
+            app.logger.info("[DEBUG-CANCEL] Step 11: Creating negative item, moved=%s", moved)
             # 実際に動いた数だけマイナス行を作る
             neg = OrderItem()
+            app.logger.info("[DEBUG-CANCEL] Step 12: Created OrderItem instance")
             _copy_if_exists(neg, it, [
                 (["order_id","注文id","注文ID"], ["order_id","注文id","注文ID"]),
                 (["menu_id","メニューid","商品id"], ["menu_id","メニューid","商品id"]),
@@ -15053,14 +15070,23 @@ def _progress_update_core(item_id: int):
             if hasattr(neg, "updated_at"): neg.updated_at = now
             if hasattr(neg, "追加日時"):   setattr(neg, "追加日時", now)
             if hasattr(neg, "added_at"):   neg.added_at = now
-            s.add(neg); s.flush()
+            app.logger.info("[DEBUG-CANCEL] Step 13: Adding negative item to session")
+            s.add(neg); 
+            app.logger.info("[DEBUG-CANCEL] Step 14: Flushing session")
+            s.flush()
             neg_id = getattr(neg, "id", None)
+            app.logger.info("[DEBUG-CANCEL] Step 15: neg_id=%s", neg_id)
 
         # 自動確定（提供済+取消 == 元数量 → 明細.status=提供済）
+        app.logger.info("[DEBUG-CANCEL] Step 16: Calling progress_finalize_if_done")
         finalized = progress_finalize_if_done(s, it)
+        app.logger.info("[DEBUG-CANCEL] Step 17: finalized=%s", finalized)
 
+        app.logger.info("[DEBUG-CANCEL] Step 18: Committing transaction")
         s.commit()
+        app.logger.info("[DEBUG-CANCEL] Step 19: Calling mark_floor_changed")
         mark_floor_changed()
+        app.logger.info("[DEBUG-CANCEL] Step 20: Success, returning response")
         return jsonify(ok=True, progress=p_after, moved=int(moved), finalized=bool(finalized), negative_item_id=neg_id)
 
     except Exception as e:
