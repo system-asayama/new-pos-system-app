@@ -15013,10 +15013,10 @@ def _progress_update_core(item_id: int):
                 _set_first(it, ["status", "状態"], new_status)
                 if hasattr(it, "updated_at"):
                     it.updated_at = datetime.utcnow()
-                current_app.logger.debug("[PROGRESS-API][SYNC] item_id=%s status: %s -> %s", 
+                app.logger.debug("[PROGRESS-API][SYNC] item_id=%s status: %s -> %s", 
                                        item_id, old_status, new_status)
         except Exception as e:
-            current_app.logger.warning("[PROGRESS-API][SYNC] failed to sync status: %s", e)
+            app.logger.warning("[PROGRESS-API][SYNC] failed to sync status: %s", e)
             # status 同期失敗は致命的ではないので続行
 
         neg_id = None
@@ -15066,8 +15066,9 @@ def _progress_update_core(item_id: int):
 
     except Exception as e:
         s.rollback()
-        current_app.logger.exception("progress_update error: %s", e)
-        return jsonify(ok=False, error="internal error"), 500
+        app.logger.exception("progress_update error: %s", e)
+        error_msg = f"internal error: {type(e).__name__}: {str(e)}"
+        return jsonify(ok=False, error=error_msg), 500
     finally:
         s.close()
         SessionLocal.remove()
