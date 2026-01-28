@@ -183,7 +183,7 @@
             {% set sub_incl = (is_cancel_positive and 0 or (incl * qty)) %}
             {% set is_all_canceled = (qty_canceled >= qty and qty > 0) %}
 
-            <tr class="{% if is_negative %}neg-row{% elif is_cancel %}muted{% endif %}">
+            <tr class="{% if is_negative %}neg-row{% elif is_cancel %}muted{% endif %}" data-item-id="{{ did }}">
               <td>
                 {% if not is_negative and not is_cancel and not is_all_canceled %}
                   <input type="checkbox" class="item-checkbox" data-item-id="{{ did }}" data-order-id="{{ hid }}">
