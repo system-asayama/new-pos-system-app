@@ -4993,21 +4993,21 @@ def progress_move(s, item, to: str, count: int):
     k = int(count)
     moved = 0
 
-    current_app.logger.debug("[PROG-MOVE] item_id=%s to=%s req=%s before(n=%s,c=%s,sv=%s,cx=%s)",
+    app.logger.debug("[PROG-MOVE] item_id=%s to=%s req=%s before(n=%s,c=%s,sv=%s,cx=%s)",
                              item_id, t, k, n, c, sv, cx)
 
     if t == "cooking":
         moved += _move("n", "c", k - moved)    # 新規→調理中
         moved += _move("sv", "c", k - moved)   # ★ 提供済→調理中（追加）
         if moved == 0:
-            current_app.logger.debug("[PROG-MOVE][DENY] item_id=%s reason=new/served shortage", item_id)
+            app.logger.debug("[PROG-MOVE][DENY] item_id=%s reason=new/served shortage", item_id)
             raise ValueError("移動可能数を超えています（新規/提供済不足）")
 
     elif t == "served":
         moved += _move("c", "sv", k - moved)
         moved += _move("n", "sv", k - moved)
         if moved == 0:
-            current_app.logger.debug("[PROG-MOVE][DENY] item_id=%s reason=new/cooking shortage", item_id)
+            app.logger.debug("[PROG-MOVE][DENY] item_id=%s reason=new/cooking shortage", item_id)
             raise ValueError("移動可能数を超えています（新規/調理中不足）")
 
     elif t == "cancel":
@@ -5015,14 +5015,14 @@ def progress_move(s, item, to: str, count: int):
         moved += _move("c",  "cx", k - moved)
         moved += _move("sv", "cx", k - moved)   # ★ 提供済→取消 を許可
         if moved == 0:
-            current_app.logger.debug("[PROG-MOVE][DENY] item_id=%s reason=new/cooking/served shortage", item_id)
+            app.logger.debug("[PROG-MOVE][DENY] item_id=%s reason=new/cooking/served shortage", item_id)
             raise ValueError("移動可能数を超えています（新規/調理中/提供済不足）")
 
     elif t == "new":
         moved += _move("sv", "n", k - moved)
         moved += _move("c",  "n", k - moved)
         if moved == 0:
-            current_app.logger.debug("[PROG-MOVE][DENY] item_id=%s reason=served/cooking shortage", item_id)
+            app.logger.debug("[PROG-MOVE][DENY] item_id=%s reason=served/cooking shortage", item_id)
             raise ValueError("移動可能数を超えています（提供済/調理中不足）")
 
     else:
@@ -5046,13 +5046,13 @@ def progress_move(s, item, to: str, count: int):
         if new_status and hasattr(item, "status"):
             old_status = getattr(item, "status", None)
             item.status = new_status
-            current_app.logger.debug("[PROG-MOVE][SYNC] item_id=%s status: %s -> %s", 
+            app.logger.debug("[PROG-MOVE][SYNC] item_id=%s status: %s -> %s", 
                                    item_id, old_status, new_status)
     except Exception as e:
-        current_app.logger.warning("[PROG-MOVE][SYNC] failed to sync status: %s", e)
+        app.logger.warning("[PROG-MOVE][SYNC] failed to sync status: %s", e)
         # status 同期失敗は致命的ではないので続行
 
-    current_app.logger.debug("[PROG-MOVE][OK] item_id=%s to=%s moved=%s after(n=%s,c=%s,sv=%s,cx=%s)",
+    app.logger.debug("[PROG-MOVE][OK] item_id=%s to=%s moved=%s after(n=%s,c=%s,sv=%s,cx=%s)",
                              item_id, t, moved, n, c, sv, cx)
     return {"qty_new": n, "qty_cooking": c, "qty_served": sv, "qty_canceled": cx}, moved
 
