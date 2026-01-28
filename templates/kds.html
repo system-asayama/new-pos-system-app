@@ -73,7 +73,17 @@ async function bulkCooking(itemIdsStr) {
   if (!confirm('選択した注文を一括で「調理中」にしますか？')) return;
   const itemIds = itemIdsStr.split(',').map(id => parseInt(id, 10));
   for (const itemId of itemIds) {
-    await chgById(itemId, '調理中', 1);
+    // 各商品の数量を画面から取得
+    const tr = document.querySelector(`tr[data-key="${itemId}"]`);
+    let count = 1;
+    if (tr) {
+      const qtyCell = tr.children[4]; // 5番目のセルが数量
+      if (qtyCell) {
+        const qty = Math.abs(Number(qtyCell.textContent || 0));
+        if (qty > 0) count = qty;
+      }
+    }
+    await chgById(itemId, '調理中', count);
   }
   fetchAndUpdateKds(false);
 }
@@ -82,7 +92,17 @@ async function bulkServed(itemIdsStr) {
   if (!confirm('選択した注文を一括で「提供済」にしますか？')) return;
   const itemIds = itemIdsStr.split(',').map(id => parseInt(id, 10));
   for (const itemId of itemIds) {
-    await chgById(itemId, '提供済', 1);
+    // 各商品の数量を画面から取得
+    const tr = document.querySelector(`tr[data-key="${itemId}"]`);
+    let count = 1;
+    if (tr) {
+      const qtyCell = tr.children[4]; // 5番目のセルが数量
+      if (qtyCell) {
+        const qty = Math.abs(Number(qtyCell.textContent || 0));
+        if (qty > 0) count = qty;
+      }
+    }
+    await chgById(itemId, '提供済', count);
   }
   fetchAndUpdateKds(false);
 }
@@ -91,7 +111,17 @@ async function bulkCancel(itemIdsStr) {
   if (!confirm('選択した注文を一括で「取消」にしますか？')) return;
   const itemIds = itemIdsStr.split(',').map(id => parseInt(id, 10));
   for (const itemId of itemIds) {
-    await chgById(itemId, '取消', 1);
+    // 各商品の数量を画面から取得
+    const tr = document.querySelector(`tr[data-key="${itemId}"]`);
+    let count = 1;
+    if (tr) {
+      const qtyCell = tr.children[4]; // 5番目のセルが数量
+      if (qtyCell) {
+        const qty = Math.abs(Number(qtyCell.textContent || 0));
+        if (qty > 0) count = qty;
+      }
+    }
+    await chgById(itemId, '取消', count);
   }
   fetchAndUpdateKds(false);
 }
