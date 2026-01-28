@@ -429,7 +429,9 @@ async function fetchAndUpdateKds(triggerSoundOnNew = true){
           <td>${item.status}</td>
           <td>
             <div class="ops">
+              {% if use_cooking_status %}
               <button type="button" onclick="chg('${rowKey}', ${item.id}, '調理中')">調理中</button>
+              {% endif %}
               <button type="button" onclick="chg('${rowKey}', ${item.id}, '提供済')">提供済</button>
               <button type="button" onclick="chg('${rowKey}', ${item.id}, '取消')">取消</button>
 
