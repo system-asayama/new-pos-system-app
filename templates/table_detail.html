@@ -628,33 +628,46 @@
   }
 
   async function bulkChangeStatusInDetail(orderId, status) {
+    console.log('[BULK-DETAIL] Starting bulkChangeStatusInDetail, orderId:', orderId, 'status:', status);
     const itemIds = getSelectedItemIds(orderId);
+    console.log('[BULK-DETAIL] Selected itemIds:', itemIds);
     if (itemIds.length === 0) {
       alert('明細が選択されていません');
       return;
     }
     
     const confirmMsg = `選択した${itemIds.length}件の明細を「${status}」に変更しますか？`;
-    if (!confirm(confirmMsg)) return;
+    if (!confirm(confirmMsg)) {
+      console.log('[BULK-DETAIL] User cancelled');
+      return;
+    }
     
     try {
       for (const itemId of itemIds) {
+        console.log('[BULK-DETAIL] Processing itemId:', itemId);
         // 明細行から数量を取得
         const row = document.querySelector(`tr[data-item-id="${itemId}"]`);
+        console.log('[BULK-DETAIL] Found row:', !!row);
         let count = 1;
         if (row) {
           const qtyCell = row.querySelector('td:nth-child(4)');
+          console.log('[BULK-DETAIL] Found qtyCell:', !!qtyCell, 'textContent:', qtyCell?.textContent);
           if (qtyCell) {
             const qty = Math.abs(Number(qtyCell.textContent || 0));
+            console.log('[BULK-DETAIL] Parsed qty:', qty);
             if (qty > 0) count = qty;
           }
         }
+        console.log('[BULK-DETAIL] Final count:', count);
         
+        const payload = { status: status, count: count };
+        console.log('[BULK-DETAIL] Sending request to /staff/api/order_item/' + itemId + '/status with payload:', payload);
         const res = await fetch(`/staff/api/order_item/${itemId}/status`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: status, count: count })
+          body: JSON.stringify(payload)
         });
+        console.log('[BULK-DETAIL] Response status:', res.status, 'ok:', res.ok);
         if (!res.ok) {
           throw new Error(`明細ID ${itemId} の更新に失敗しました`);
         }
