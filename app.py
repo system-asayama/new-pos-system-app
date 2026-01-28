@@ -15022,8 +15022,7 @@ def _progress_update_core(item_id: int):
         neg_id = None
         if action == "cancel" and moved > 0:
             # 実際に動いた数だけマイナス行を作る
-            OrderItemModel, _ = _models()
-            neg = OrderItemModel()
+            neg = OrderItem()
             _copy_if_exists(neg, it, [
                 (["order_id","注文id","注文ID"], ["order_id","注文id","注文ID"]),
                 (["menu_id","メニューid","商品id"], ["menu_id","メニューid","商品id"]),
