@@ -5888,7 +5888,7 @@ def staff_api_order_item_status(item_id: int):
                 (["税込単価"], ["税込単価","price_incl"]),
                 (["scheduled_date","売上計上日"], ["scheduled_date","売上計上日"]),
             ])
-            _set_first(neg, ["qty","数量"], -int(count))
+            _set_first(neg, ["qty","数量"], -int(moved))
             _set_first(neg, ["税率","tax_rate"], float(tax_rate if tax_rate is not None else 0.10))
             _set_first(neg, ["status","状態"], "取消")
 
@@ -9480,7 +9480,7 @@ def api_order_item_status(item_id: int):
             return jsonify(ok=False, error="invalid status"), 400
 
         try:
-            p_after = progress_move(s, it, status, count)
+            p_after, moved = progress_move(s, it, status, count)
         except ValueError as e:
             s.rollback()
             return jsonify(ok=False, error=str(e)), 400
@@ -9498,7 +9498,7 @@ def api_order_item_status(item_id: int):
                 (["unit_price","単価","税抜単価"], ["unit_price","単価","税抜単価"]),
                 (["税込単価"], ["税込単価","price_incl"]),
             ])
-            _set_first(neg, ["qty","数量"], -int(count))
+            _set_first(neg, ["qty","数量"], -int(moved))
             _set_first(neg, ["税率","tax_rate"], float(tax_rate if tax_rate is not None else 0.10))
             _set_first(neg, ["status","状態"], "取消")
 
