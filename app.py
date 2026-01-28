@@ -5869,7 +5869,7 @@ def staff_api_order_item_status(item_id: int):
             return jsonify({"ok": False, "error": "invalid status"}), 400
 
         try:
-            p_after = progress_move(s, it, status, count)  # qty_* を移動
+            p_after, moved = progress_move(s, it, status, count)  # qty_* を移動
         except ValueError as e:
             s.rollback()
             return jsonify({"ok": False, "error": str(e)}), 400
