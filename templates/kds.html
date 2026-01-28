@@ -72,6 +72,10 @@ function canRefresh(){ return Date.now() >= refreshPauseUntil; }
 async function bulkCooking(itemIdsStr) {
   if (!confirm('選択した注文を一括で「調理中」にしますか？')) return;
   const itemIds = itemIdsStr.split(',').map(id => parseInt(id, 10));
+  
+  // 全商品の処理が終わるまで自動更新を停止
+  pauseRefresh(itemIds.length * 2000 + 5000);
+  
   for (const itemId of itemIds) {
     // 各商品の数量を画面から取得
     const tr = document.querySelector(`tr[data-key="${itemId}"]`);
@@ -85,12 +89,19 @@ async function bulkCooking(itemIdsStr) {
     }
     await chgById(itemId, '調理中', count);
   }
+  
+  // 全処理完了後に1回だけ更新
+  refreshPauseUntil = 0;
   fetchAndUpdateKds(false);
 }
 
 async function bulkServed(itemIdsStr) {
   if (!confirm('選択した注文を一括で「提供済」にしますか？')) return;
   const itemIds = itemIdsStr.split(',').map(id => parseInt(id, 10));
+  
+  // 全商品の処理が終わるまで自動更新を停止
+  pauseRefresh(itemIds.length * 2000 + 5000);
+  
   for (const itemId of itemIds) {
     // 各商品の数量を画面から取得
     const tr = document.querySelector(`tr[data-key="${itemId}"]`);
@@ -104,12 +115,19 @@ async function bulkServed(itemIdsStr) {
     }
     await chgById(itemId, '提供済', count);
   }
+  
+  // 全処理完了後に1回だけ更新
+  refreshPauseUntil = 0;
   fetchAndUpdateKds(false);
 }
 
 async function bulkCancel(itemIdsStr) {
   if (!confirm('選択した注文を一括で「取消」にしますか？')) return;
   const itemIds = itemIdsStr.split(',').map(id => parseInt(id, 10));
+  
+  // 全商品の処理が終わるまで自動更新を停止
+  pauseRefresh(itemIds.length * 2000 + 5000);
+  
   for (const itemId of itemIds) {
     // 各商品の数量を画面から取得
     const tr = document.querySelector(`tr[data-key="${itemId}"]`);
@@ -127,6 +145,9 @@ async function bulkCancel(itemIdsStr) {
     if (DEBUG_KDS) console.log(`[BULK CANCEL] final count=${count}`);
     await chgById(itemId, '取消', count);
   }
+  
+  // 全処理完了後に1回だけ更新
+  refreshPauseUntil = 0;
   fetchAndUpdateKds(false);
 }
 
