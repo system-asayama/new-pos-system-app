@@ -14933,11 +14933,6 @@ def staff_api_order():
 def staff_api_progress_update(item_id: int):
     return _progress_update_core(item_id)
 
-@app.route("/api/order_item/<int:item_id>/status", methods=["POST"])
-@require_any
-def api_progress_update(item_id: int):
-    return _progress_update_core(item_id)
-
 
 def _norm_status(st: str) -> str:
     """UIから来る多様な表記を cooking / served / cancel / new の4種に正規化"""
