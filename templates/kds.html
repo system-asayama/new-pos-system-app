@@ -114,13 +114,17 @@ async function bulkCancel(itemIdsStr) {
     // 各商品の数量を画面から取得
     const tr = document.querySelector(`tr[data-key="${itemId}"]`);
     let count = 1;
+    if (DEBUG_KDS) console.log(`[BULK CANCEL] itemId=${itemId}, tr found:`, !!tr);
     if (tr) {
       const qtyCell = tr.children[4]; // 5番目のセルが数量
+      if (DEBUG_KDS) console.log(`[BULK CANCEL] qtyCell:`, qtyCell, 'textContent:', qtyCell?.textContent);
       if (qtyCell) {
         const qty = Math.abs(Number(qtyCell.textContent || 0));
+        if (DEBUG_KDS) console.log(`[BULK CANCEL] qty=${qty}`);
         if (qty > 0) count = qty;
       }
     }
+    if (DEBUG_KDS) console.log(`[BULK CANCEL] final count=${count}`);
     await chgById(itemId, '取消', count);
   }
   fetchAndUpdateKds(false);
