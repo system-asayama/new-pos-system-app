@@ -2069,6 +2069,14 @@ def migrate_schema_if_needed():
                 conn.exec_driver_sql('ALTER TABLE "M_店舗" ADD COLUMN "印刷サーバーURL" VARCHAR')
             if "調理中ステータス使用" not in cols:
                 conn.exec_driver_sql('ALTER TABLE "M_店舗" ADD COLUMN "調理中ステータス使用" INTEGER NOT NULL DEFAULT 1')
+        
+        # T_店員呼び出しテーブルの修正（カラム名が間違っている場合は再作成）
+        if "T_店員呼び出し" in tables:
+            cols = {c["name"] for c in insp.get_columns("T_店員呼び出し")}
+            # カラム名が英語の場合はテーブルを削除して再作成
+            if "timestamp" in cols or "table_no" in cols:
+                conn.exec_driver_sql('DROP TABLE "T_店員呼び出し"')
+                tables.discard("T_店員呼び出し")
 
         # 既存ロジック：主要マスター群が1つでも無ければ metadata 全体を作成
         need_new = False
