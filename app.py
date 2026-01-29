@@ -16543,6 +16543,29 @@ def api_staff_call_confirm():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/api/debug_log", methods=["POST"])
+@require_any
+def api_debug_log():
+    """
+    クライアント側のデバッグイベントをサーバーに記録するAPI
+    POST JSON:
+      { "event": "<イベント名>", "table_no": "<テーブル番号>", "timestamp": <タイムスタンプ> }
+    """
+    try:
+        data = request.get_json(force=True) or {}
+        event = data.get("event", "UNKNOWN")
+        table_no = data.get("table_no", "N/A")
+        timestamp = data.get("timestamp", "N/A")
+        
+        app.logger.info(f"[CLIENT_DEBUG] event={event}, table_no={table_no}, timestamp={timestamp}")
+        
+        return jsonify({"ok": True})
+    
+    except Exception as e:
+        app.logger.error(f"[api_debug_log] error: {e}", exc_info=True)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 # =========================================================
 # プリンター設定API（ブラウザ側印刷用）
 # =========================================================

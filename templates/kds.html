@@ -552,6 +552,13 @@ function updateStaffCallDisplay() {
       confirmBtn.textContent = '確認';
       confirmBtn.onclick = async () => {
         try {
+          // サーバーにログ送信（ボタンクリックを記録）
+          fetch('/api/debug_log', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event: 'CONFIRM_BUTTON_CLICK', table_no: tableNo, timestamp: callInfo.timestamp })
+          }).catch(e => console.error('Failed to send debug log:', e));
+          
           // サーバーに確認を通知
           const res = await fetch('/api/staff_call/confirm', {
             method: 'POST',
@@ -601,9 +608,18 @@ async function checkStaffCalls(){
       });
       
       // 新しい呼び出しを検出して音声再生
+      console.log('[checkStaffCalls] Before check - activeCalls:', Array.from(activeCalls.keys()));
       serverCalls.forEach(call => {
-        if (!activeCalls.has(call.table_no)) {
-          console.log('[checkStaffCalls] New call from table:', call.table_no);
+        const hasCall = activeCalls.has(call.table_no);
+        console.log('[checkStaffCalls] Checking table:', call.table_no, 'hasCall:', hasCall);
+        if (!hasCall) {
+          console.log('[checkStaffCalls] ⚠️ NEW CALL DETECTED - Playing audio for table:', call.table_no);
+          // サーバーにログ送信（音声再生を記録）
+          fetch('/api/debug_log', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event: 'AUDIO_PLAY', table_no: call.table_no, timestamp: call.timestamp })
+          }).catch(e => console.error('Failed to send debug log:', e));
           // 音声再生
           window.playStaffCall();
         }
@@ -623,6 +639,7 @@ async function checkStaffCalls(){
       serverCallsMap.forEach((value, tableNo) => {
         activeCalls.set(tableNo, value);
       });
+      console.log('[checkStaffCalls] After update - activeCalls:', Array.from(activeCalls.keys()));
       
       updateStaffCallDisplay();
     }
