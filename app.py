@@ -2073,10 +2073,26 @@ def migrate_schema_if_needed():
         # T_店員呼び出しテーブルの修正（カラム名が間違っている場合は再作成）
         if "T_店員呼び出し" in tables:
             cols = {c["name"] for c in insp.get_columns("T_店員呼び出し")}
-            # カラム名が英語の場合はテーブルを削除して再作成
-            if "timestamp" in cols or "table_no" in cols:
+            # カラム名が英語の場合、または日本語カラムが存在しない場合はテーブルを削除
+            if "timestamp" in cols or "table_no" in cols or "タイムスタンプ" not in cols:
                 conn.exec_driver_sql('DROP TABLE "T_店員呼び出し"')
                 tables.discard("T_店員呼び出し")
+        
+        # T_店員呼び出しテーブルが存在しない場合は直接SQLで作成
+        if "T_店員呼び出し" not in tables:
+            conn.exec_driver_sql('''
+                CREATE TABLE "T_店員呼び出し" (
+                    id SERIAL PRIMARY KEY,
+                    "店舗ID" INTEGER,
+                    "テーブル番号" VARCHAR NOT NULL,
+                    "タイムスタンプ" INTEGER NOT NULL,
+                    "確認済み" INTEGER NOT NULL DEFAULT 0,
+                    "作成日時" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            conn.exec_driver_sql('CREATE INDEX ON "T_店員呼び出し" ("店舗ID")')
+            conn.exec_driver_sql('CREATE INDEX ON "T_店員呼び出し" ("タイムスタンプ")')
+            tables.add("T_店員呼び出し")
 
         # 既存ロジック：主要マスター群が1つでも無ければ metadata 全体を作成
         need_new = False
