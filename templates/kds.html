@@ -609,8 +609,21 @@ async function checkStaffCalls(){
         }
       });
       
-      // サーバーの状態に同期（確認済みの呼び出しを削除）
-      activeCalls = serverCallsMap;
+      // サーバーの状態に同期（確認済みの呼び出しを削除、新しい呼び出しを追加）
+      // 既存のactiveCallsを保持しつつ、サーバーにない呼び出しを削除
+      const tablesToRemove = [];
+      activeCalls.forEach((value, tableNo) => {
+        if (!serverCallsMap.has(tableNo)) {
+          tablesToRemove.push(tableNo);
+        }
+      });
+      tablesToRemove.forEach(tableNo => activeCalls.delete(tableNo));
+      
+      // サーバーから返ってきた呼び出しを追加または更新
+      serverCallsMap.forEach((value, tableNo) => {
+        activeCalls.set(tableNo, value);
+      });
+      
       updateStaffCallDisplay();
     }
   }catch(e){
