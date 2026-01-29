@@ -13584,6 +13584,18 @@ def api_add_item():
 # 1. テーブル移動履歴モデル
 # ========================================
 
+class T_店員呼び出し(Base):
+    """店員呼び出しテーブル：お客様からの店員呼び出しを記録"""
+    __tablename__ = "T_店員呼び出し"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    store_id = Column("店舗ID", Integer, nullable=True, index=True)
+    table_no = Column("テーブル番号", String, nullable=False)
+    timestamp = Column("タイムスタンプ", Integer, nullable=False, index=True)
+    confirmed = Column("確認済み", Integer, nullable=False, default=0)  # 0=未確認, 1=確認済み
+    created_at = Column("作成日時", DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
 class T_テーブル移動履歴(Base):
     __tablename__ = "T_テーブル移動履歴"
     
@@ -16410,11 +16422,8 @@ def api_sales_hourly():
 
 
 # =========================================================
-# 店員呼び出しAPI
+# 店員呼び出しAPI（データベース版）
 # =========================================================
-# 店員呼び出し状態を保持するグローバル変数（簡易実装）
-_staff_calls = []  # [{"table_no": "1", "timestamp": 1234567890, "store_id": 1, "confirmed": False}]
-_staff_calls_lock = threading.Lock()
 
 @app.route("/api/staff_call", methods=["POST"])
 def api_staff_call():
@@ -16426,17 +16435,15 @@ def api_staff_call():
     レスポンス:
       { "ok": true, "table_no": "<テーブル番号>" }
     """
-    global _staff_calls
+    s = SessionLocal()
     try:
         data = request.get_json(force=True) or {}
         token = data.get("token", "")
         table_no = data.get("table_no", "不明")
         store_id = None
         
-        # トークン検証（既存のQRトークン検証ロジックを使用）
-        s = SessionLocal()
+        # トークン検証
         try:
-            # QRトークンからテーブル情報を取得
             qr = s.query(QrToken).filter(QrToken.token == token).first()
             if qr and qr.table_id:
                 table = s.get(TableSeat, qr.table_id)
@@ -16445,32 +16452,37 @@ def api_staff_call():
                     store_id = getattr(table, "store_id", None) or getattr(qr, "store_id", None)
         except Exception as e:
             app.logger.warning(f"[api_staff_call] token validation warning: {e}")
-        finally:
-            s.close()
         
-        # 呼び出しを記録
-        with _staff_calls_lock:
-            new_timestamp = int(time.time())
-            _staff_calls.append({
-                "table_no": table_no,
-                "timestamp": new_timestamp,
-                "store_id": store_id,
-                "confirmed": False
-            })
-            # 古い呼び出しを削除（60秒以上前または確認済み）
-            cutoff = int(time.time()) - 60
-            before_cleanup = len(_staff_calls)
-            _staff_calls = [c for c in _staff_calls if c["timestamp"] > cutoff and not c["confirmed"]]
-            after_cleanup = len(_staff_calls)
+        # 呼び出しをデータベースに記録
+        new_timestamp = int(time.time())
+        new_call = T_店員呼び出し(
+            store_id=store_id,
+            table_no=table_no,
+            timestamp=new_timestamp,
+            confirmed=0
+        )
+        s.add(new_call)
         
-        # ログに記録
+        # 古い呼び出しを削除（60秒以上前または確認済み）
+        cutoff = int(time.time()) - 60
+        before_cleanup = s.query(T_店員呼び出し).count()
+        s.query(T_店員呼び出し).filter(
+            (T_店員呼び出し.timestamp <= cutoff) | (T_店員呼び出し.confirmed == 1)
+        ).delete(synchronize_session=False)
+        
+        s.commit()
+        after_cleanup = s.query(T_店員呼び出し).count()
+        
         app.logger.info(f"[STAFF_CALL] テーブル {table_no} から店員呼び出し (timestamp={new_timestamp}, before_cleanup={before_cleanup}, after_cleanup={after_cleanup})")
         
         return jsonify({"ok": True, "table_no": table_no})
     
     except Exception as e:
+        s.rollback()
         app.logger.error(f"[api_staff_call] error: {e}", exc_info=True)
         return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        s.close()
 
 
 @app.route("/api/staff_call/poll", methods=["GET"])
@@ -16481,26 +16493,30 @@ def api_staff_call_poll():
     レスポンス:
       { "ok": true, "calls": [{"table_no": "1", "timestamp": 1234567890}] }
     """
-    global _staff_calls
+    s = SessionLocal()
     try:
         sid = current_store_id()
         
-        with _staff_calls_lock:
-            # 店舗IDでフィルタリングし、未確認の呼び出しをすべて返す
-            calls = [
-                {"table_no": c["table_no"], "timestamp": c["timestamp"]}
-                for c in _staff_calls
-                if not c["confirmed"] and (sid is None or c["store_id"] == sid)
-            ]
-            # デバッグログ
-            if calls:
-                app.logger.info(f"[STAFF_CALL_POLL] Returning {len(calls)} calls: {calls}")
+        # 店舗IDでフィルタリングし、未確認の呼び出しをすべて返す
+        query = s.query(T_店員呼び出し).filter(T_店員呼び出し.confirmed == 0)
+        if sid is not None:
+            query = query.filter(T_店員呼び出し.store_id == sid)
+        
+        calls = [
+            {"table_no": c.table_no, "timestamp": c.timestamp}
+            for c in query.all()
+        ]
+        
+        if calls:
+            app.logger.info(f"[STAFF_CALL_POLL] Returning {len(calls)} calls: {calls}")
         
         return jsonify({"ok": True, "calls": calls})
     
     except Exception as e:
         app.logger.error(f"[api_staff_call_poll] error: {e}", exc_info=True)
         return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        s.close()
 
 
 @app.route("/api/staff_call/confirm", methods=["POST"])
@@ -16514,7 +16530,7 @@ def api_staff_call_confirm():
     レスポンス:
       { "ok": true }
     """
-    global _staff_calls
+    s = SessionLocal()
     try:
         data = request.get_json(force=True) or {}
         table_no = data.get("table_no")
@@ -16523,24 +16539,29 @@ def api_staff_call_confirm():
         if not table_no or timestamp is None:
             return jsonify({"ok": False, "error": "table_no and timestamp are required"}), 400
         
-        with _staff_calls_lock:
-            # 該当する呼び出しを確認済みにする
-            found = False
-            for call in _staff_calls:
-                if call["table_no"] == table_no and call["timestamp"] == timestamp:
-                    call["confirmed"] = True
-                    found = True
-                    app.logger.info(f"[STAFF_CALL_CONFIRM] テーブル {table_no} の呼び出しを確認 (timestamp={timestamp}, remaining_calls={len([c for c in _staff_calls if not c['confirmed']])})")  
-                    break
-            if not found:
-                app.logger.warning(f"[STAFF_CALL_CONFIRM] テーブル {table_no} の呼び出しが見つかりません (timestamp={timestamp})")
-
+        # 該当する呼び出しを確認済みにする
+        call = s.query(T_店員呼び出し).filter(
+            T_店員呼び出し.table_no == table_no,
+            T_店員呼び出し.timestamp == timestamp,
+            T_店員呼び出し.confirmed == 0
+        ).first()
+        
+        if call:
+            call.confirmed = 1
+            s.commit()
+            remaining = s.query(T_店員呼び出し).filter(T_店員呼び出し.confirmed == 0).count()
+            app.logger.info(f"[STAFF_CALL_CONFIRM] テーブル {table_no} の呼び出しを確認 (timestamp={timestamp}, remaining_calls={remaining})")
+        else:
+            app.logger.warning(f"[STAFF_CALL_CONFIRM] テーブル {table_no} の呼び出しが見つかりません (timestamp={timestamp})")
         
         return jsonify({"ok": True})
     
     except Exception as e:
+        s.rollback()
         app.logger.error(f"[api_staff_call_confirm] error: {e}", exc_info=True)
         return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        s.close()
 
 
 @app.route("/api/debug_log", methods=["POST"])
