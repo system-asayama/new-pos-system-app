@@ -2082,7 +2082,7 @@ def migrate_schema_if_needed():
         # ---- 追加：中核テーブルを “個別” に補完（存在しないものだけ）----
         # ※ Model 定義の __tablename__ と一致するキー名で参照されます
         #    例: class M_メニュー(Base): __tablename__ = "M_メニュー"
-        core_needed = ["M_メニュー", "T_注文", "T_注文明細", "M_テーブル"]
+        core_needed = ["M_メニュー", "T_注文", "T_注文明細", "M_テーブル", "T_店員呼び出し"]
         # 最新のテーブル一覧を取り直す（今 create_all したかもしれないため）
         tables = set(inspect(eng).get_table_names())
 
