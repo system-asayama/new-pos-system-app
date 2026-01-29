@@ -16450,18 +16450,21 @@ def api_staff_call():
         
         # 呼び出しを記録
         with _staff_calls_lock:
+            new_timestamp = int(time.time())
             _staff_calls.append({
                 "table_no": table_no,
-                "timestamp": int(time.time()),
+                "timestamp": new_timestamp,
                 "store_id": store_id,
                 "confirmed": False
             })
             # 古い呼び出しを削除（60秒以上前または確認済み）
             cutoff = int(time.time()) - 60
+            before_cleanup = len(_staff_calls)
             _staff_calls = [c for c in _staff_calls if c["timestamp"] > cutoff and not c["confirmed"]]
+            after_cleanup = len(_staff_calls)
         
         # ログに記録
-        app.logger.info(f"[STAFF_CALL] テーブル {table_no} から店員呼び出し")
+        app.logger.info(f"[STAFF_CALL] テーブル {table_no} から店員呼び出し (timestamp={new_timestamp}, before_cleanup={before_cleanup}, after_cleanup={after_cleanup})")
         
         return jsonify({"ok": True, "table_no": table_no})
     
@@ -16489,6 +16492,9 @@ def api_staff_call_poll():
                 for c in _staff_calls
                 if not c["confirmed"] and (sid is None or c["store_id"] == sid)
             ]
+            # デバッグログ
+            if calls:
+                app.logger.info(f"[STAFF_CALL_POLL] Returning {len(calls)} calls: {calls}")
         
         return jsonify({"ok": True, "calls": calls})
     
@@ -16519,11 +16525,16 @@ def api_staff_call_confirm():
         
         with _staff_calls_lock:
             # 該当する呼び出しを確認済みにする
+            found = False
             for call in _staff_calls:
                 if call["table_no"] == table_no and call["timestamp"] == timestamp:
                     call["confirmed"] = True
-                    app.logger.info(f"[STAFF_CALL_CONFIRM] テーブル {table_no} の呼び出しを確認")
+                    found = True
+                    app.logger.info(f"[STAFF_CALL_CONFIRM] テーブル {table_no} の呼び出しを確認 (timestamp={timestamp}, remaining_calls={len([c for c in _staff_calls if not c['confirmed']])})")  
                     break
+            if not found:
+                app.logger.warning(f"[STAFF_CALL_CONFIRM] テーブル {table_no} の呼び出しが見つかりません (timestamp={timestamp})")
+
         
         return jsonify({"ok": True})
     
