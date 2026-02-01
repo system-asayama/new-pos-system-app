@@ -118,6 +118,56 @@
       display:inline-block;background:#9CA3AF;color:#fff;
       font-size:12px;border-radius:9999px;padding:2px 8px;margin-left:8px
     }
+    
+    /* カゴ追加フィードバック */
+    #cart-toast{
+      position:fixed;
+      top:80px;
+      right:20px;
+      background:#10b981;
+      color:#fff;
+      padding:16px 24px;
+      border-radius:12px;
+      box-shadow:0 10px 25px rgba(0,0,0,0.2);
+      font-weight:600;
+      font-size:16px;
+      z-index:1000;
+      opacity:0;
+      transform:translateX(400px);
+      transition:all 0.3s ease;
+      pointer-events:none;
+    }
+    #cart-toast.show{
+      opacity:1;
+      transform:translateX(0);
+    }
+    
+    /* カゴに飛んでいくアニメーション */
+    .fly-to-cart{
+      position:fixed;
+      width:20px;
+      height:20px;
+      background:#4f46e5;
+      border-radius:50%;
+      z-index:999;
+      pointer-events:none;
+      animation:fly 0.8s ease-out forwards;
+    }
+    
+    @keyframes fly{
+      0%{
+        opacity:1;
+        transform:scale(1);
+      }
+      50%{
+        opacity:1;
+        transform:scale(1.5);
+      }
+      100%{
+        opacity:0;
+        transform:scale(0.5);
+      }
+    }
   </style>
 </head>
 
@@ -525,7 +575,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ===== カゴ =====
   const cart=[];
-  function upsertCartItem(menu, qtyDelta=1){
+  function upsertCartItem(menu, qtyDelta=1, sourceElement=null){
     const {rate,excl,incl}=computePrices(menu);
     const idx=cart.findIndex(x=>x.menu_id===menu.id && !x.memo);
     if(idx>=0){ cart[idx].qty += qtyDelta; if(cart[idx].qty<1) cart[idx].qty=1; }
@@ -540,6 +590,9 @@ document.addEventListener('DOMContentLoaded', () => {
       cart.push(item);
     }
     renderCart();
+    
+    // フィードバックを表示
+    showCartFeedback(sourceElement);
   }
   function renderCart(){
     const body=document.getElementById('cart-body'); if(!body) return;
@@ -1286,6 +1339,54 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   })();
   
+  // ===== カゴ追加フィードバック =====
+  function showCartFeedback(sourceElement) {
+    // トースト通知を表示
+    const toast = document.getElementById('cart-toast');
+    if (toast) {
+      toast.classList.add('show');
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 2000);
+    }
+    
+    // カゴに飛んでいくアニメーション
+    if (sourceElement) {
+      const cartContainer = document.getElementById('cart-container');
+      if (cartContainer) {
+        const sourceRect = sourceElement.getBoundingClientRect();
+        const cartRect = cartContainer.getBoundingClientRect();
+        
+        const dot = document.createElement('div');
+        dot.className = 'fly-to-cart';
+        dot.style.left = sourceRect.left + sourceRect.width / 2 + 'px';
+        dot.style.top = sourceRect.top + sourceRect.height / 2 + 'px';
+        document.body.appendChild(dot);
+        
+        // カゴの位置に向かって移動
+        requestAnimationFrame(() => {
+          const deltaX = cartRect.left + cartRect.width / 2 - (sourceRect.left + sourceRect.width / 2);
+          const deltaY = cartRect.top + cartRect.height / 2 - (sourceRect.top + sourceRect.height / 2);
+          dot.style.transform = `translate(${deltaX}px, ${deltaY}px) scale(0.5)`;
+        });
+        
+        // アニメーション終了後に削除
+        setTimeout(() => {
+          dot.remove();
+        }, 800);
+      }
+    }
+    
+    // 効果音を再生（あれば）
+    try {
+      const audio = new Audio('/static/sounds/cart_add.wav');
+      audio.volume = 0.3;
+      audio.play().catch(e => console.log('[AUDIO] 再生失敗:', e));
+    } catch (e) {
+      // 音声ファイルがない場合は無視
+    }
+  }
+  
   // ===== スマホ表示：注文カゴの折りたたみ機能 =====
   if (window.innerWidth <= 900) {
     const cartContainer = document.getElementById('cart-container');
@@ -1346,7 +1447,9 @@ async function openOptionModal(menu) {
   const options = await fetchMenuOptions(menu.id);
   if (!options || options.length === 0) {
     if (window.__upsertCartItem) {
-      window.__upsertCartItem(menu, 1);
+      // クリックされたボタンを取得
+      const btn = event?.target?.closest('button[data-role="add"]');
+      window.__upsertCartItem(menu, 1, btn);
     }
     return;
   }
@@ -1512,6 +1615,13 @@ function addToCartWithOptions() {
   });
   
   window.__renderCart();
+  
+  // フィードバックを表示（モーダルのボタンをソースとして使用）
+  const modalBtn = document.querySelector('#option-modal button.btn.primary');
+  if (typeof showCartFeedback === 'function') {
+    showCartFeedback(modalBtn);
+  }
+  
   closeOptionModal();
 }
 
@@ -1588,6 +1698,13 @@ function saveMarketPrice() {
   });
   
   window.__renderCart();
+  
+  // フィードバックを表示
+  const modalBtn = document.querySelector('#market-price-modal button.btn.primary');
+  if (typeof showCartFeedback === 'function') {
+    showCartFeedback(modalBtn);
+  }
+  
   closeMarketPriceModal();
 }
 
@@ -1608,6 +1725,12 @@ function skipMarketPrice() {
   });
   
   window.__renderCart();
+  
+  // フィードバックを表示
+  const modalBtn = document.querySelector('#market-price-modal button.btn.sub');
+  if (typeof showCartFeedback === 'function') {
+    showCartFeedback(modalBtn);
+  }
   closeMarketPriceModal();
 }
 
@@ -1781,6 +1904,9 @@ window.skipMarketPrice = skipMarketPrice;
       </div>
     </div>
   </div>
+
+  <!-- カゴ追加トースト通知 -->
+  <div id="cart-toast">✅ カゴに追加しました</div>
 
 </body>
 </html>
