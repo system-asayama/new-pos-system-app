@@ -556,7 +556,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // ===== ユーザー判定 =====
   const userRole = ds.userRole || '';
   isStaff = ['staff','store_staff','store_admin','tenant_admin','sysadmin','admin','manager'].includes(userRole);
-  console.log('[userRole] IS_PUBLIC:', IS_PUBLIC, 'userRole:', userRole, 'isStaff:', isStaff);
+      console.log('[userRole] IS_PUBLIC:', IS_PUBLIC, 'userRole:', userRole, 'isStaff:', isStaff);
+      sendServerLog('Page loaded', { IS_PUBLIC, userRole, isStaff });
 
   // ===== カゴ =====
   const cart=[];
@@ -1324,15 +1325,42 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   })();
   
+  // ===== サーバーログ送信 =====
+  function sendServerLog(message, data = {}) {
+    try {
+      fetch('/api/debug_log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          event: 'CLIENT_ANIMATION_DEBUG', 
+          message: message,
+          data: data,
+          timestamp: Date.now()
+        })
+      }).catch(e => console.error('[LOG] Failed to send log:', e));
+    } catch (e) {
+      console.error('[LOG] Error sending log:', e);
+    }
+  }
+  
   // ===== カゴ追加フィードバック =====
   function showCartFeedback(sourceElement) {
     // トースト通知を表示
     const toast = document.getElementById('cart-toast');
     if (toast) {
-      toast.classList.add('show');
+      // 既存のタイマーをクリア
+      if (toast._hideTimer) {
+        clearTimeout(toast._hideTimer);
+      }
+      toast.classList.remove('show');
+      // 少し待ってから再表示（アニメーションをリセット）
       setTimeout(() => {
-        toast.classList.remove('show');
-      }, 2000);
+        toast.classList.add('show');
+        toast._hideTimer = setTimeout(() => {
+          toast.classList.remove('show');
+          toast._hideTimer = null;
+        }, 2000);
+      }, 50);
     }
     
     // カゴに飛んでいくアニメーション
@@ -1342,22 +1370,31 @@ document.addEventListener('DOMContentLoaded', () => {
         const sourceRect = sourceElement.getBoundingClientRect();
         const cartRect = cartContainer.getBoundingClientRect();
         
+        const logData = {
+          source: { left: sourceRect.left, top: sourceRect.top, width: sourceRect.width, height: sourceRect.height },
+          cart: { left: cartRect.left, top: cartRect.top, width: cartRect.width, height: cartRect.height }
+        };
         console.log('[ANIMATION] Source:', sourceRect, 'Cart:', cartRect);
+        sendServerLog('Animation started', logData);
         
         const dot = document.createElement('div');
         dot.className = 'fly-to-cart';
-        dot.style.left = (sourceRect.left + sourceRect.width / 2 - 10) + 'px';
-        dot.style.top = (sourceRect.top + sourceRect.height / 2 - 10) + 'px';
+        const startX = sourceRect.left + sourceRect.width / 2 - 10;
+        const startY = sourceRect.top + sourceRect.height / 2 - 10;
+        dot.style.left = startX + 'px';
+        dot.style.top = startY + 'px';
         dot.style.opacity = '1';
         document.body.appendChild(dot);
         
         console.log('[ANIMATION] Dot created at:', dot.style.left, dot.style.top);
+        sendServerLog('Dot created', { left: dot.style.left, top: dot.style.top });
         
         // カゴの位置に向かって移動
         setTimeout(() => {
           const targetX = cartRect.left + cartRect.width / 2 - 10;
           const targetY = cartRect.top + cartRect.height / 2 - 10;
           console.log('[ANIMATION] Moving to:', targetX, targetY);
+          sendServerLog('Moving dot', { targetX, targetY });
           dot.style.left = targetX + 'px';
           dot.style.top = targetY + 'px';
           dot.style.transform = 'scale(0.3)';
@@ -1368,12 +1405,15 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => {
           dot.remove();
           console.log('[ANIMATION] Dot removed');
+          sendServerLog('Animation completed', {});
         }, 900);
       } else {
         console.log('[ANIMATION] Cart container not found');
+        sendServerLog('Cart container not found', {});
       }
     } else {
       console.log('[ANIMATION] Source element not provided');
+      sendServerLog('Source element not provided', {});
     }
     
     // 効果音を再生（あれば）

@@ -16599,8 +16599,17 @@ def api_debug_log():
         event = data.get("event", "UNKNOWN")
         table_no = data.get("table_no", "N/A")
         timestamp = data.get("timestamp", "N/A")
+        message = data.get("message", "")
+        extra_data = data.get("data", {})
         
-        app.logger.info(f"[CLIENT_DEBUG] event={event}, table_no={table_no}, timestamp={timestamp}")
+        # 詳細ログを出力
+        log_msg = f"[CLIENT_DEBUG] event={event}, message={message}"
+        if table_no != "N/A":
+            log_msg += f", table_no={table_no}"
+        if extra_data:
+            log_msg += f", data={json.dumps(extra_data, ensure_ascii=False)}"
+        
+        app.logger.info(log_msg)
         
         return jsonify({"ok": True})
     
