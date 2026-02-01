@@ -16587,7 +16587,6 @@ def api_staff_call_confirm():
 
 
 @app.route("/api/debug_log", methods=["POST"])
-@require_any
 def api_debug_log():
     """
     クライアント側のデバッグイベントをサーバーに記録するAPI
