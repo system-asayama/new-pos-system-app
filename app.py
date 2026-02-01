@@ -12750,13 +12750,12 @@ def _delete_order_if_empty(s: Session, header: "OrderHeader") -> bool:
     if getattr(header, "status", "") == "会計済" or getattr(header, "closed_at", None):
         return False
 
-    # ★ パフォーマンス最適化: データベース側でカウントしてループ処理を削減
+    # ★ パフォーマンス最適化: データベース側で数量の合計を計算
     try:
-        # キャンセルではない有効な明細の数をカウント
         from sqlalchemy import func, or_
-        active_count = s.query(func.count(OrderItem.id)).filter(
+        # キャンセルではない明細の数量合計を計算（取消はqty=-1、通常はqty=1で相殺）
+        active_qty_sum = s.query(func.coalesce(func.sum(OrderItem.qty), 0)).filter(
             OrderItem.order_id == header.id,
-            OrderItem.qty > 0,
             ~or_(
                 OrderItem.status.like('%取消%'),
                 OrderItem.status.like('%キャンセル%'),
@@ -12765,10 +12764,10 @@ def _delete_order_if_empty(s: Session, header: "OrderHeader") -> bool:
             )
         ).scalar()
         
-        can_delete = (active_count == 0)
+        can_delete = (active_qty_sum <= 0)
     except Exception:
         # エラー時は安全側で削除しない
-        current_app.logger.exception("[_delete_order_if_empty] failed to count active items")
+        current_app.logger.exception("[_delete_order_if_empty] failed to sum active qty")
         return False
 
     if not can_delete:
