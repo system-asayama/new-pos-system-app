@@ -518,7 +518,7 @@ window.playStaffCall = async function(){
 };
 
 /* ====== 店員呼び出しポーリング ====== */
-let activeCalls = new Map(); // 現在表示中の呼び出し - key: table_no, value: {timestamp}
+let activeCalls = new Map(); // 現在表示中の呼び出し - key: "table_no:timestamp", value: {table_no, timestamp}
 
 function updateStaffCallDisplay() {
   const alertEl = document.getElementById('staff-call-alert');
@@ -527,24 +527,28 @@ function updateStaffCallDisplay() {
   console.log('[updateStaffCallDisplay] activeCalls:', activeCalls, 'size:', activeCalls.size);
   
   if (activeCalls.size > 0) {
-    const tableList = Array.from(activeCalls.keys()).sort((a, b) => {
-      // 数値としてソートを試みる
-      const numA = parseInt(a);
-      const numB = parseInt(b);
-      if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
-      return a.localeCompare(b);
+    const callList = Array.from(activeCalls.values()).sort((a, b) => {
+      // テーブル番号でソート、同じテーブルならタイムスタンプでソート
+      const numA = parseInt(a.table_no);
+      const numB = parseInt(b.table_no);
+      if (!isNaN(numA) && !isNaN(numB)) {
+        if (numA !== numB) return numA - numB;
+        return a.timestamp - b.timestamp;
+      }
+      const cmp = a.table_no.localeCompare(b.table_no);
+      if (cmp !== 0) return cmp;
+      return a.timestamp - b.timestamp;
     });
     
     // リストを再構築
     listEl.innerHTML = '';
-    tableList.forEach(tableNo => {
-      const callInfo = activeCalls.get(tableNo);
+    callList.forEach(callInfo => {
       const itemDiv = document.createElement('div');
       itemDiv.style.cssText = 'display:flex; align-items:center; justify-content:space-between; background:#fff; padding:8px 12px; border-radius:6px; border:1px solid #f59e0b;';
       
       const tableText = document.createElement('span');
       tableText.style.cssText = 'font-size:16px; font-weight:600; color:#92400e;';
-      tableText.textContent = `テーブル: ${tableNo}`;
+      tableText.textContent = `テーブル: ${callInfo.table_no}`;
       
       const confirmBtn = document.createElement('button');
       confirmBtn.type = 'button';
@@ -556,19 +560,20 @@ function updateStaffCallDisplay() {
           fetch('/api/debug_log', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ event: 'CONFIRM_BUTTON_CLICK', table_no: tableNo, timestamp: callInfo.timestamp })
+            body: JSON.stringify({ event: 'CONFIRM_BUTTON_CLICK', table_no: callInfo.table_no, timestamp: callInfo.timestamp })
           }).catch(e => console.error('Failed to send debug log:', e));
           
           // サーバーに確認を通知
           const res = await fetch('/api/staff_call/confirm', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ table_no: tableNo, timestamp: callInfo.timestamp })
+            body: JSON.stringify({ table_no: callInfo.table_no, timestamp: callInfo.timestamp })
           });
           const data = await res.json();
           if (data && data.ok) {
-            console.log('[confirmStaffCall] Confirmed:', tableNo);
-            activeCalls.delete(tableNo);
+            const callKey = `${callInfo.table_no}:${callInfo.timestamp}`;
+            console.log('[confirmStaffCall] Confirmed:', callKey);
+            activeCalls.delete(callKey);
             updateStaffCallDisplay();
           } else {
             console.error('[confirmStaffCall] Failed:', data);
@@ -604,16 +609,18 @@ async function checkStaffCalls(){
       // サーバーから返ってきた呼び出しのMapを作成
       const serverCallsMap = new Map();
       serverCalls.forEach(call => {
-        serverCallsMap.set(call.table_no, { timestamp: call.timestamp });
+        const callKey = `${call.table_no}:${call.timestamp}`;
+        serverCallsMap.set(callKey, { table_no: call.table_no, timestamp: call.timestamp });
       });
       
       // 新しい呼び出しを検出して音声再生
       console.log('[checkStaffCalls] Before check - activeCalls:', Array.from(activeCalls.keys()));
       serverCalls.forEach(call => {
-        const hasCall = activeCalls.has(call.table_no);
-        console.log('[checkStaffCalls] Checking table:', call.table_no, 'hasCall:', hasCall);
+        const callKey = `${call.table_no}:${call.timestamp}`;
+        const hasCall = activeCalls.has(callKey);
+        console.log('[checkStaffCalls] Checking call:', callKey, 'hasCall:', hasCall);
         if (!hasCall) {
-          console.log('[checkStaffCalls] ⚠️ NEW CALL DETECTED - Playing audio for table:', call.table_no);
+          console.log('[checkStaffCalls] ⚠️ NEW CALL DETECTED - Playing audio for:', callKey);
           // サーバーにログ送信（音声再生を記録）
           fetch('/api/debug_log', {
             method: 'POST',
@@ -627,17 +634,17 @@ async function checkStaffCalls(){
       
       // サーバーの状態に同期（確認済みの呼び出しを削除、新しい呼び出しを追加）
       // 既存のactiveCallsを保持しつつ、サーバーにない呼び出しを削除
-      const tablesToRemove = [];
-      activeCalls.forEach((value, tableNo) => {
-        if (!serverCallsMap.has(tableNo)) {
-          tablesToRemove.push(tableNo);
+      const callsToRemove = [];
+      activeCalls.forEach((value, callKey) => {
+        if (!serverCallsMap.has(callKey)) {
+          callsToRemove.push(callKey);
         }
       });
-      tablesToRemove.forEach(tableNo => activeCalls.delete(tableNo));
+      callsToRemove.forEach(callKey => activeCalls.delete(callKey));
       
       // サーバーから返ってきた呼び出しを追加または更新
-      serverCallsMap.forEach((value, tableNo) => {
-        activeCalls.set(tableNo, value);
+      serverCallsMap.forEach((value, callKey) => {
+        activeCalls.set(callKey, value);
       });
       console.log('[checkStaffCalls] After update - activeCalls:', Array.from(activeCalls.keys()));
       
