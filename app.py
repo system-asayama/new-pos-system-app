@@ -12750,37 +12750,26 @@ def _delete_order_if_empty(s: Session, header: "OrderHeader") -> bool:
     if getattr(header, "status", "") == "会計済" or getattr(header, "closed_at", None):
         return False
 
-    # 明細を取得
+    # ★ パフォーマンス最適化: データベース側でカウントしてループ処理を削減
     try:
-        items = s.query(OrderItem).filter(OrderItem.order_id == header.id).all()
+        # キャンセルではない有効な明細の数をカウント
+        from sqlalchemy import func, or_
+        active_count = s.query(func.count(OrderItem.id)).filter(
+            OrderItem.order_id == header.id,
+            OrderItem.qty > 0,
+            ~or_(
+                OrderItem.status.like('%取消%'),
+                OrderItem.status.like('%キャンセル%'),
+                OrderItem.status.like('%cancel%'),
+                OrderItem.status.like('%void%')
+            )
+        ).scalar()
+        
+        can_delete = (active_count == 0)
     except Exception:
-        # モデルが取れない等は安全側で削除しない
+        # エラー時は安全側で削除しない
+        current_app.logger.exception("[_delete_order_if_empty] failed to count active items")
         return False
-
-    # 明細0件 → 削除可
-    if not items:
-        can_delete = True
-    else:
-        active_qty_sum = 0
-        for it in items:
-            try:
-                qty = int(getattr(it, "qty", 0) or 0)
-            except Exception:
-                qty = 0
-
-            # キャンセル判定
-            is_cancel = False
-            try:
-                is_cancel = _is_cancel_item(it)
-            except Exception:
-                st = (getattr(it, "status", None) or "").lower()
-                is_cancel = any(k in st for k in ("取消", "ｷｬﾝｾﾙ", "キャンセル", "cancel", "void"))
-
-            if is_cancel and qty > 0:
-                continue
-            active_qty_sum += qty
-
-        can_delete = (active_qty_sum <= 0)
 
     if not can_delete:
         return False
@@ -12830,14 +12819,14 @@ def _reset_customer_info_for_order(s: Session, header: "OrderHeader") -> None:
     try:
         if hasattr(header, "id") and header.id is not None:
             s.query(T_お客様詳細).filter(T_お客様詳細.order_id == header.id).delete(synchronize_session=False)
-            s.flush()
+            # ★ flush削除（最後にcommitされる）
 
         if getattr(header, "table_id", None):
             s.query(T_お客様詳細).filter(
                 T_お客様詳細.table_id == header.table_id,
                 T_お客様詳細.order_id == None  # noqa: E711
             ).delete(synchronize_session=False)
-            s.flush()
+            # ★ flush削除（最後にcommitされる）
     except Exception:
         current_app.logger.exception("[reset-session] delete T_お客様詳細 failed (best-effort)")
 
@@ -12880,7 +12869,7 @@ def reset_order_session(order_id: int):
             _reset_customer_info_for_order(s, header)
             if getattr(header, "table_id", None):
                 _purge_customer_detail_for_table(s, table_id=header.table_id)
-            s.flush()
+            # ★ 不要なflushを削除（_delete_order_if_empty内でcommitされる）
         except Exception:
             current_app.logger.exception("[reset-session] customer info reset failed")
 
@@ -13452,6 +13441,21 @@ def api_order():
         added    = 0
         new_items_for_print = []
 
+        # ★ パフォーマンス最適化: メニューを一括取得してN+1問題を解決
+        menu_ids = []
+        for it in items:
+            try:
+                mid = int(it.get("menu_id"))
+                qty = int(it.get("qty", 1))
+                if qty > 0:
+                    menu_ids.append(mid)
+            except Exception:
+                pass
+        
+        # 全メニューを一度に取得
+        menus = s.query(Menu).filter(Menu.id.in_(menu_ids), Menu.available == 1).all() if menu_ids else []
+        menu_map = {m.id: m for m in menus}
+        
         for it in items:
             try:
                 mid = int(it.get("menu_id"))
@@ -13465,8 +13469,8 @@ def api_order():
 
             memo = (it.get("memo") or "").strip()
             actual_price = it.get("actual_price")  # 時価商品の実際価格
-            m = s.get(Menu, mid)
-            if not (m and m.available == 1):
+            m = menu_map.get(mid)
+            if not m:
                 app.logger.debug("[api_order] skip item (menu not available): id=%s", mid)
                 continue
 
@@ -13519,7 +13523,6 @@ def api_order():
             if actual_price is not None and hasattr(new_item, 'actual_price'):
                 new_item.actual_price = int(actual_price)
             s.add(new_item)
-            s.flush()  # IDを確定
             
             # 進捗データを初期化（新規=数量で開始）
             try:
@@ -13538,6 +13541,9 @@ def api_order():
             app.logger.warning("[api_order] no valid items -> rollback")
             s.rollback()
             return jsonify({"ok": False, "error": "no valid items"}), 400
+
+        # ★ 全商品追加後に1回だけflushしてIDを確定
+        s.flush()
 
         order.subtotal = subtotal
         order.tax      = taxsum
