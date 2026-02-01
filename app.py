@@ -12750,25 +12750,35 @@ def _delete_order_if_empty(s: Session, header: "OrderHeader") -> bool:
     if getattr(header, "status", "") == "会計済" or getattr(header, "closed_at", None):
         return False
 
-    # ★ パフォーマンス最適化: データベース側で数量の合計を計算
-    try:
-        from sqlalchemy import func, or_
-        # キャンセルではない明細の数量合計を計算（取消はqty=-1、通常はqty=1で相殺）
-        active_qty_sum = s.query(func.coalesce(func.sum(OrderItem.qty), 0)).filter(
-            OrderItem.order_id == header.id,
-            ~or_(
-                OrderItem.status.like('%取消%'),
-                OrderItem.status.like('%キャンセル%'),
-                OrderItem.status.like('%cancel%'),
-                OrderItem.status.like('%void%')
-            )
-        ).scalar()
+    # ★ 元のロジックに戻す: 全明細を取得して判定
+    # （取消明細でqty>0のものは除外、それ以外は数量を加算）
+    items = s.query(OrderItem).filter(OrderItem.order_id == header.id).all()
+    active_qty_sum = 0
+    debug_items = []
+    for it in items:
+        qty = int(getattr(it, "qty", 0) or 0)
+        is_cancel = _is_cancel_item(it)
+        status = getattr(it, "status", None)
+        item_id = getattr(it, "id", None)
         
-        can_delete = (active_qty_sum <= 0)
-    except Exception:
-        # エラー時は安全側で削除しない
-        current_app.logger.exception("[_delete_order_if_empty] failed to sum active qty")
-        return False
+        # デバッグ情報を記録
+        debug_items.append({
+            "id": item_id,
+            "qty": qty,
+            "status": status,
+            "is_cancel": is_cancel
+        })
+        
+        # 取消明細で数量が正の場合は除外（元の注文をキャンセルする明細）
+        if is_cancel and qty > 0:
+            continue
+        # それ以外は数量を加算（通常明細は+、取消明細は-）
+        active_qty_sum += qty
+    
+    # デバッグログを出力
+    current_app.logger.info(f"[_delete_order_if_empty] order_id={header.id}, items={debug_items}, active_qty_sum={active_qty_sum}")
+    
+    can_delete = (active_qty_sum <= 0)
 
     if not can_delete:
         return False
