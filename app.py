@@ -16477,7 +16477,12 @@ def api_staff_call():
         except Exception as e:
             app.logger.warning(f"[api_staff_call] token validation warning: {e}")
         
-        # 呼び出しをデータベースに記録
+        # 確認済みの呼び出しを削除（古い未確認の呼び出しは残す）
+        deleted = s.query(T_店員呼び出し).filter(
+            T_店員呼び出し.confirmed == 1
+        ).delete(synchronize_session=False)
+        
+        # 新しい呼び出しをデータベースに記録
         new_timestamp = int(time.time())
         new_call = T_店員呼び出し(
             store_id=store_id,
@@ -16486,20 +16491,13 @@ def api_staff_call():
             confirmed=0
         )
         s.add(new_call)
-        
-        # 古い呼び出しを削除（60秒以上前または確認済み）
-        cutoff = int(time.time()) - 60
-        before_cleanup = s.query(T_店員呼び出し).count()
-        s.query(T_店員呼び出し).filter(
-            (T_店員呼び出し.timestamp <= cutoff) | (T_店員呼び出し.confirmed == 1)
-        ).delete(synchronize_session=False)
-        
         s.commit()
-        after_cleanup = s.query(T_店員呼び出し).count()
         
-        app.logger.info(f"[STAFF_CALL] テーブル {table_no} から店員呼び出し (timestamp={new_timestamp}, before_cleanup={before_cleanup}, after_cleanup={after_cleanup})")
+        total_calls = s.query(T_店員呼び出し).filter(T_店員呼び出し.confirmed == 0).count()
         
-        return jsonify({"ok": True, "table_no": table_no})
+        app.logger.info(f"[STAFF_CALL] テーブル {table_no} から店員呼び出し (timestamp={new_timestamp}, deleted_confirmed={deleted}, total_pending={total_calls})")
+        
+        return jsonify({"ok": True, "table_no": table_no, "timestamp": new_timestamp})
     
     except Exception as e:
         s.rollback()
