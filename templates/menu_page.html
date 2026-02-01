@@ -873,7 +873,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if(!btn || btn.disabled) return;
     const id = Number(btn.dataset.id);
     const menu = __menuMap.get(id);
-    if(menu) await openOptionModal(menu);
+    if(menu) await openOptionModal(menu, btn);
   });
 
   function renderMenus(menus){
@@ -1463,9 +1463,12 @@ async function fetchMenuOptions(menuId) {
 }
 
 // モーダルを開く
-async function openOptionModal(menu) {
+async function openOptionModal(menu, sourceButton = null) {
   currentMenuForOptions = menu;
   selectedOptions = {};
+  
+  // ソースボタンを保存
+  currentMenuForOptions._sourceButton = sourceButton;
   
   // 時価商品の場合の処理
   // is_market_priceフラグがtrueの場合のみ時価商品と判定
@@ -1474,7 +1477,7 @@ async function openOptionModal(menu) {
     // お客様用ページ（IS_PUBLIC && !isStaff）では価格0円で直接カートに追加
     if (IS_PUBLIC && !isStaff) {
       console.log('[openOptionModal] お客様用：カートに追加');
-      window.__upsertCartItem(menu, 1);
+      window.__upsertCartItem(menu, 1, sourceButton);
       return;
     }
     // スタッフ用ページでは価格入力モーダルを表示
@@ -1486,9 +1489,7 @@ async function openOptionModal(menu) {
   const options = await fetchMenuOptions(menu.id);
   if (!options || options.length === 0) {
     if (window.__upsertCartItem) {
-      // クリックされたボタンを取得
-      const btn = event?.target?.closest('button[data-role="add"]');
-      window.__upsertCartItem(menu, 1, btn);
+      window.__upsertCartItem(menu, 1, sourceButton);
     }
     return;
   }
@@ -1655,10 +1656,10 @@ function addToCartWithOptions() {
   
   window.__renderCart();
   
-  // フィードバックを表示（モーダルのボタンをソースとして使用）
-  const modalBtn = document.querySelector('#option-modal button.btn.primary');
+  // フィードバックを表示（保存されたソースボタンを使用）
+  const sourceBtn = currentMenuForOptions._sourceButton;
   if (typeof showCartFeedback === 'function') {
-    showCartFeedback(modalBtn);
+    showCartFeedback(sourceBtn);
   }
   
   closeOptionModal();
@@ -1670,8 +1671,16 @@ window.closeOptionModal = closeOptionModal;
 // ===== 時価商品価格入力機能 =====
 let currentMarketPriceMenu = null;
 
-function openMarketPriceModal(menu) {
+function openMarketPriceModal(menu, sourceButton = null) {
   currentMarketPriceMenu = menu;
+  
+  // ソースボタンを保存
+  if (menu._sourceButton) {
+    currentMarketPriceMenu._sourceButton = menu._sourceButton;
+  } else if (sourceButton) {
+    currentMarketPriceMenu._sourceButton = sourceButton;
+  }
+  
   const modal = document.getElementById('market-price-modal');
   const menuNameEl = document.getElementById('market-price-menu-name');
   const priceInput = document.getElementById('market-price-input');
@@ -1738,10 +1747,10 @@ function saveMarketPrice() {
   
   window.__renderCart();
   
-  // フィードバックを表示
-  const modalBtn = document.querySelector('#market-price-modal button.btn.primary');
+  // フィードバックを表示（保存されたソースボタンを使用）
+  const sourceBtn = currentMarketPriceMenu._sourceButton;
   if (typeof showCartFeedback === 'function') {
-    showCartFeedback(modalBtn);
+    showCartFeedback(sourceBtn);
   }
   
   closeMarketPriceModal();
@@ -1765,10 +1774,10 @@ function skipMarketPrice() {
   
   window.__renderCart();
   
-  // フィードバックを表示
-  const modalBtn = document.querySelector('#market-price-modal button.btn.sub');
+  // フィードバックを表示（保存されたソースボタンを使用）
+  const sourceBtn = currentMarketPriceMenu._sourceButton;
   if (typeof showCartFeedback === 'function') {
-    showCartFeedback(modalBtn);
+    showCartFeedback(sourceBtn);
   }
   closeMarketPriceModal();
 }
