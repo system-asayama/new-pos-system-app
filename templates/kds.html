@@ -15,6 +15,9 @@
 <div id="cat-bar" style="display:flex; flex-wrap:wrap; gap:8px; margin:6px 0 12px; align-items:center;">
   <button type="button" id="btn-all" class="cat-btn all" data-id="__ALL__">すべて</button>
   <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+    <button type="button" id="sort-toggle-btn" style="padding:8px 14px; border:1px solid #d1d5db; border-radius:6px; background:#fff; cursor:pointer; font-size:14px; font-weight:600;">
+      <span id="sort-icon">▼</span> <span id="sort-label">降順（新しい順）</span>
+    </button>
     <label style="margin:0; display:flex; align-items:center; gap:4px; font-size:14px;">
       <input type="checkbox" id="sound-toggle" checked>
       <span>通知音</span>
@@ -62,7 +65,10 @@ const API_CATS    = "{{ url_for('api_kds_categories') }}";
 /* ====== デバッグ設定 ====== */
 const DEBUG_KDS = true;
 
-/* ====== 自動更新の“編集ロック” ====== */
+/* ====== ソート順設定 ====== */
+let sortOrder = 'desc'; // 'desc' = 降順（新しい順）, 'asc' = 昇順（古い順）
+
+/* ====== 自動更新の"編集ロック" ====== */
 const EDIT_LOCK_MS = 5000;
 let refreshPauseUntil = 0;
 function pauseRefresh(ms){ refreshPauseUntil = Math.max(refreshPauseUntil, Date.now() + (ms||EDIT_LOCK_MS)); }
@@ -366,9 +372,15 @@ async function fetchAndUpdateKds(triggerSoundOnNew = true){
       orderGroups.get(item.order_id).push(item);
     });
 
+    // ★ order_idでソート（降順/昇順）
+    const sortedOrderIds = Array.from(orderGroups.keys()).sort((a, b) => {
+      return sortOrder === 'desc' ? b - a : a - b;
+    });
+
     // ★ 各注文グループを表示
     let isFirstGroup = true;
-    orderGroups.forEach((items, orderId) => {
+    sortedOrderIds.forEach(orderId => {
+      const items = orderGroups.get(orderId);
       // 区切り行（最初のグループ以外）
       if (!isFirstGroup) {
         const spacerTr = document.createElement('tr');
@@ -657,6 +669,30 @@ async function checkStaffCalls(){
 
 document.addEventListener('DOMContentLoaded', async () => {
   await loadCategories();
+
+  // ソート切り替えボタンのイベントリスナー
+  const sortToggleBtn = document.getElementById('sort-toggle-btn');
+  const sortIcon = document.getElementById('sort-icon');
+  const sortLabel = document.getElementById('sort-label');
+  
+  if (sortToggleBtn) {
+    sortToggleBtn.addEventListener('click', () => {
+      // ソート順を切り替え
+      sortOrder = sortOrder === 'desc' ? 'asc' : 'desc';
+      
+      // ボタンの表示を更新
+      if (sortOrder === 'desc') {
+        sortIcon.textContent = '▼';
+        sortLabel.textContent = '降順（新しい順）';
+      } else {
+        sortIcon.textContent = '▲';
+        sortLabel.textContent = '昇順（古い順）';
+      }
+      
+      // 表示を更新
+      fetchAndUpdateKds(false);
+    });
+  }
 
   // 初回は「すべて」を自動ONして即取得
   if (!btnAll.classList.contains('active')) {
