@@ -12248,11 +12248,37 @@ def admin_rules():
                 "menu_name": menu_name,
                 "printer_name": printer_name
             })
-        cats = s.query(Category.id, Category.name).filter(Category.active == 1)\
-            .order_by(Category.display_order, Category.name).all()
+        # カテゴリを親カテゴリごとにグループ化
+        cats = s.query(Category).filter(Category.active == 1)\
+            .order_by(Category.parent_id, Category.display_order, Category.name).all()
+        
+        # 親カテゴリごとにグループ化
+        from collections import defaultdict
+        cats_by_parent = defaultdict(list)
+        for c in cats:
+            cats_by_parent[c.parent_id].append(c)
+        
+        # 親カテゴリの名前を取得
+        parent_names = {}
+        for parent_id in cats_by_parent.keys():
+            if parent_id:
+                parent = s.get(Category, parent_id)
+                if parent:
+                    parent_names[parent_id] = parent.name
+        
+        # グループ化されたカテゴリリストを作成
+        cats_grouped = []
+        for parent_id in sorted(cats_by_parent.keys(), key=lambda x: (x is not None, x)):
+            parent_name = parent_names.get(parent_id, "区分なし")
+            cats_grouped.append({
+                "parent_id": parent_id,
+                "parent_name": parent_name,
+                "categories": [{"id": c.id, "名称": c.name} for c in cats_by_parent[parent_id]]
+            })
+        
         menu = s.query(Menu.id, Menu.name).order_by(Menu.display_order, Menu.name).all()
         printers = s.query(Printer.id, Printer.name).filter(Printer.enabled == 1).order_by(Printer.name).all()
-        cats_dict = [{"id": c.id, "名称": c.name} for c in cats]
+        cats_dict = cats_grouped
         menu_dict = [{"id": m.id, "名称": m.name} for m in menu]
         printers_dict = [{"id": p.id, "名称": p.name} for p in printers]
         return render_template("rules.html", title="印刷ルール",

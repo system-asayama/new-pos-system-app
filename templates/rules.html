@@ -9,7 +9,13 @@
       <label>カテゴリ（任意）</label>
       <select name="カテゴリID">
         <option value="">(なし)</option>
-        {% for c in cats %}<option value="{{ c['id'] }}">{{ c['名称'] }}</option>{% endfor %}
+        {% for group in cats %}
+          <optgroup label="{{ group['parent_name'] }}">
+            {% for c in group['categories'] %}
+              <option value="{{ c['id'] }}">{{ c['名称'] }}</option>
+            {% endfor %}
+          </optgroup>
+        {% endfor %}
       </select>
 
       <label>メニュー（任意）</label>
