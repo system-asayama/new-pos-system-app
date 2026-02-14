@@ -2513,6 +2513,91 @@ def build_ticket_with_totals(header, items, table, new_item_ids):
     return "\n".join(lines) + "\n"
 
 
+# --- KDS印刷処理（印刷ルールに基づく） --------------------------------------------
+def _trigger_kds_print(session_db, order_id, new_items):
+    """
+    印刷ルールに基づいてKDS印刷を実行
+    
+    Args:
+        session_db: データベースセッション
+        order_id: 注文ID
+        new_items: 新しく追加されたOrderItemのリスト
+    """
+    if not new_items:
+        return
+    
+    # 印刷ルールを取得
+    rules = session_db.query(PrintRule).filter(PrintRule.enabled == 1).all()
+    if not rules:
+        app.logger.debug("[_trigger_kds_print] no print rules found")
+        return
+    
+    # プリンターごとに印刷するアイテムをグループ化
+    printer_items = {}  # printer_id -> [items]
+    
+    for item in new_items:
+        menu_id = item.menu_id
+        
+        # このアイテムに適用される印刷ルールを検索
+        for rule in rules:
+            # メニュー指定のルール
+            if rule.menu_id and rule.menu_id == menu_id:
+                if rule.printer_id not in printer_items:
+                    printer_items[rule.printer_id] = []
+                printer_items[rule.printer_id].append(item)
+                break  # 最初にマッチしたルールを適用
+            
+            # カテゴリ指定のルール
+            elif rule.category_id:
+                # メニューがこのカテゴリに属しているかチェック
+                cat_link = session_db.query(ProductCategoryLink).filter(
+                    ProductCategoryLink.product_id == menu_id,
+                    ProductCategoryLink.category_id == rule.category_id
+                ).first()
+                
+                if cat_link:
+                    if rule.printer_id not in printer_items:
+                        printer_items[rule.printer_id] = []
+                    printer_items[rule.printer_id].append(item)
+                    break  # 最初にマッチしたルールを適用
+    
+    if not printer_items:
+        app.logger.debug("[_trigger_kds_print] no items matched print rules")
+        return
+    
+    # 注文情報を取得
+    order = session_db.get(OrderHeader, order_id)
+    if not order:
+        app.logger.warning("[_trigger_kds_print] order not found: %s", order_id)
+        return
+    
+    # テーブル情報を取得
+    table = None
+    if order.table_id:
+        table = session_db.get(TableSeat, order.table_id)
+    
+    # プリンターごとに印刷
+    for printer_id, items in printer_items.items():
+        printer = session_db.get(Printer, printer_id)
+        if not printer or printer.enabled != 1:
+            app.logger.warning("[_trigger_kds_print] printer not found or disabled: %s", printer_id)
+            continue
+        
+        try:
+            # 印刷データを生成
+            ticket = build_ticket_with_totals(order, items, table, [i.id for i in items])
+            
+            # プリンターに印刷
+            if printer.kind == "escpos_tcp":
+                print_escpos_tcp(ticket, printer.connection)
+                app.logger.info("[_trigger_kds_print] printed to %s (%s): %d items",
+                               printer.name, printer.connection, len(items))
+            else:
+                app.logger.warning("[_trigger_kds_print] unsupported printer type: %s", printer.kind)
+        except Exception as e:
+            app.logger.exception("[_trigger_kds_print] failed to print to %s: %s", printer.name, e)
+
+
 # --- ESC/POS（TCP）プリンタへの印刷 --------------------------------------------
 def print_escpos_tcp(text, conn_str):
     host, port = re.sub(r'^tcp://', '', conn_str).split(':')
@@ -13704,11 +13789,11 @@ def api_order():
         s.commit()
         mark_floor_changed()
 
-        # 💡 ブラウザ側で印刷処理を行うため、サーバー側の印刷処理は削除
-        # try:
-        #     trigger_print_job(order.id, items_to_print=new_items_for_print)
-        # except Exception:
-        #     app.logger.exception("[api_order] failed to print")
+        # 印刷処理（印刷ルールに基づいてKDS印刷を実行）
+        try:
+            _trigger_kds_print(s, order.id, new_items_for_print)
+        except Exception:
+            app.logger.exception("[api_order] KDS print failed (non-fatal)")
 
         return jsonify({
             "ok": True,
