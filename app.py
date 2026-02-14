@@ -1408,6 +1408,7 @@ class Store(TenantScoped, Base):
     business_hours = Column("営業時間", String, nullable=True)  # 営業時間
     receipt_footer = Column("レシートフッター", Text, nullable=True)  # レシート下部のメッセージ
     printer_server_url = Column("印刷サーバーURL", String, nullable=True)  # レシート印刷サーバーのURL (例: http://192.168.1.100:3001)
+    printer_server_api_key = Column("プリンターサーバーAPIキー", String, nullable=True)  # printer-server用のAPIキー
 
     created_at = Column("作成日時", String, nullable=False, default=now_str)
     updated_at = Column("更新日時", String, nullable=False, default=now_str)
@@ -12091,11 +12092,16 @@ def admin_printers():
                 "使用中": rule_count > 0,
                 "ルール数": rule_count
             })
+        # APIキーを取得
+        store = s.get(Store, sid) if sid else None
+        api_key = store.printer_server_api_key if store else None
+        
         return render_template(
             "printers.html",
             title="プリンタ",
             printers=printers,
-            discover_info={"supported": True, "mdns": HAS_ZEROCONF}
+            discover_info={"supported": True, "mdns": HAS_ZEROCONF},
+            api_key=api_key
         )
     finally:
         s.close()
@@ -12306,6 +12312,72 @@ def admin_printers_import():
     except Exception as e:
         s.rollback()
         return jsonify(ok=False, error=str(e)), 400
+    finally:
+        s.close()
+        SessionLocal.remove()
+
+
+# --- APIキー生成 --------------------------------------------------------------
+@app.route("/admin/printers/generate-api-key", methods=["POST"])
+@require_admin
+def admin_printers_generate_api_key():
+    """新しいAPIキーを生成して店舗に保存"""
+    s = SessionLocal()
+    try:
+        sid = current_store_id()
+        if not sid:
+            flash("店舗IDが見つかりません", "error")
+            return redirect(url_for("admin_printers"))
+        
+        store = s.get(Store, sid)
+        if not store:
+            flash("店舗が見つかりません", "error")
+            return redirect(url_for("admin_printers"))
+        
+        # 32文字のランダムなAPIキーを生成
+        api_key = secrets.token_urlsafe(32)
+        store.printer_server_api_key = api_key
+        s.commit()
+        
+        flash(f"APIキーを生成しました", "success")
+        return redirect(url_for("admin_printers"))
+    except Exception as e:
+        s.rollback()
+        flash(f"APIキーの生成に失敗しました: {e}", "error")
+        return redirect(url_for("admin_printers"))
+    finally:
+        s.close()
+        SessionLocal.remove()
+
+
+# --- APIキー再生成 ----------------------------------------------------------
+@app.route("/admin/printers/regenerate-api-key", methods=["POST"])
+@require_admin
+def admin_printers_regenerate_api_key():
+    """新しいAPIキーを再生成して上書き"""
+    s = SessionLocal()
+    try:
+        sid = current_store_id()
+        if not sid:
+            flash("店舗IDが見つかりません", "error")
+            return redirect(url_for("admin_printers"))
+        
+        store = s.get(Store, sid)
+        if not store:
+            flash("店舗が見つかりません", "error")
+            return redirect(url_for("admin_printers"))
+        
+        # 32文字のランダムなAPIキーを生成
+        api_key = secrets.token_urlsafe(32)
+        store.printer_server_api_key = api_key
+        s.commit()
+        
+        flash(f"APIキーを再生成しました", "success")
+        return redirect(url_for("admin_printers"))
+    except Exception as e:
+        s.rollback()
+        flash(f"APIキーの再生成に失敗しました: {e}", "error")
+        return redirect(url_for("admin_printers"))
     finally:
         s.close()
         SessionLocal.remove()
@@ -19076,16 +19148,27 @@ def api_printer_server_new_orders():
     from flask import request
     import os
     
-    # APIキー認証（環境変数から取得）
-    expected_api_key = os.getenv("PRINTER_SERVER_API_KEY", "your-secret-key-here")
-    provided_api_key = request.args.get("api_key", "")
-    
-    if provided_api_key != expected_api_key:
-        return jsonify({"ok": False, "error": "Invalid API key"}), 401
-    
     store_id = request.args.get("store_id", type=int)
     if not store_id:
         return jsonify({"ok": False, "error": "store_id is required"}), 400
+    
+    provided_api_key = request.args.get("api_key", "")
+    
+    # APIキー認証（データベースから取得）
+    s_auth = SessionLocal()
+    try:
+        store = s_auth.get(Store, store_id)
+        if not store:
+            return jsonify({"ok": False, "error": "Store not found"}), 404
+        
+        expected_api_key = store.printer_server_api_key
+        if not expected_api_key:
+            return jsonify({"ok": False, "error": "API key not configured for this store"}), 401
+        
+        if provided_api_key != expected_api_key:
+            return jsonify({"ok": False, "error": "Invalid API key"}), 401
+    finally:
+        s_auth.close()
     
     since_id = request.args.get("since_id", type=int, default=0)
     

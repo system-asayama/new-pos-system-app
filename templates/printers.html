@@ -8,6 +8,29 @@
   <p style="margin:8px 0">
     クラウドからローカルネットワークのプリンタへ印刷するためには、<strong>プリンターサーバーをローカルPCで起動する必要があります</strong>。
   </p>
+  
+  <!-- APIキー設定 -->
+  <div style="background:#fff; border:1px solid #ddd; border-radius:8px; padding:12px; margin:12px 0">
+    <h4 style="margin:0 0 8px 0; color:#2c5aa0">🔑 APIキー設定</h4>
+    <p class="muted" style="margin:4px 0 8px 0; font-size:0.9em">
+      printer-serverが自動印刷するために必要なAPIキーです。一度生成したら、<code>config.json</code>にコピーしてください。
+    </p>
+    <div class="row" style="gap:8px; align-items:center">
+      {% if api_key %}
+        <code style="background:#f5f5f5; padding:8px 12px; border-radius:4px; font-family:monospace; flex:1">{{ api_key }}</code>
+        <button class="btn sub" onclick="copyApiKey('{{ api_key }}')">📋 コピー</button>
+        <form method="post" action="{{ url_for('admin_printers_regenerate_api_key') }}" style="display:inline" onsubmit="return confirm('新しいAPIキーを生成しますか？古いキーは無効になります。')">
+          <button class="btn sub" type="submit">🔄 再生成</button>
+        </form>
+      {% else %}
+        <span class="muted">未設定</span>
+        <form method="post" action="{{ url_for('admin_printers_generate_api_key') }}" style="display:inline">
+          <button class="btn primary" type="submit">✨ APIキーを生成</button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+  
   <div class="row" style="gap:12px; align-items:center; margin-top:12px">
     <a href="{{ url_for('download_printer_server') }}" class="btn primary" style="text-decoration:none">
       ⬇️ printer-server.zip をダウンロード
@@ -17,14 +40,26 @@
   <details style="margin-top:12px">
     <summary style="cursor:pointer; color:#2c5aa0">ℹ️ 詳しい手順</summary>
     <ol style="margin:8px 0; padding-left:20px; line-height:1.8">
+      <li>上記の「APIキーを生成」ボタンでAPIキーを生成し、コピーする</li>
       <li>上記ボタンから <code>printer-server.zip</code> をダウンロード</li>
       <li>ZIPファイルを任意の場所に解凍</li>
-      <li><code>printer-server</code> フォルダ内の <code>start.bat</code> をダブルクリック</li>
-      <li>コマンドプロンプトが開き、「Server running on http://localhost:3001」と表示されれば成功</li>
+      <li><code>printer-server</code> フォルダ内に <code>config.json</code> を作成し、APIキーを設定</li>
+      <li><code>start.bat</code> をダブルクリックして起動</li>
+      <li>コマンドプロンプトに「Server running on http://localhost:3001」と表示されれば成功</li>
       <li>下記の「新規プリンタ」で種別を <code>printer_server</code> にして登録</li>
     </ol>
   </details>
 </div>
+
+<script>
+function copyApiKey(key) {
+  navigator.clipboard.writeText(key).then(() => {
+    alert('APIキーをコピーしました！');
+  }).catch(err => {
+    alert('コピーに失敗しました: ' + err);
+  });
+}
+</script>
 
 <div class="grid" style="grid-template-columns:1fr 1fr; gap:16px">
   <!-- 左：手動登録 -->
