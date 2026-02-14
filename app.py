@@ -12248,9 +12248,12 @@ def admin_rules():
                 "menu_name": menu_name,
                 "printer_name": printer_name
             })
-        # カテゴリを親カテゴリごとにグループ化
+        # カテゴリを3階層構造で構築（大分類→中分類→小分類）
         cats = s.query(Category).filter(Category.active == 1)\
-            .order_by(Category.parent_id, Category.display_order, Category.name).all()
+            .order_by(Category.display_order, Category.name).all()
+        
+        # 全カテゴリをIDでインデックス化
+        cats_by_id = {c.id: c for c in cats}
         
         # 親カテゴリごとにグループ化
         from collections import defaultdict
@@ -12258,23 +12261,56 @@ def admin_rules():
         for c in cats:
             cats_by_parent[c.parent_id].append(c)
         
-        # 親カテゴリの名前を取得
-        parent_names = {}
-        for parent_id in cats_by_parent.keys():
-            if parent_id:
-                parent = s.get(Category, parent_id)
-                if parent:
-                    parent_names[parent_id] = parent.name
+        # 階層の深さを計算する関数
+        def get_depth(cat_id):
+            if cat_id is None:
+                return 0
+            cat = cats_by_id.get(cat_id)
+            if cat is None or cat.parent_id is None:
+                return 1
+            return 1 + get_depth(cat.parent_id)
         
-        # グループ化されたカテゴリリストを作成
-        cats_grouped = []
-        for parent_id in sorted(cats_by_parent.keys(), key=lambda x: (x is not None, x)):
-            parent_name = parent_names.get(parent_id, "区分なし")
-            cats_grouped.append({
-                "parent_id": parent_id,
-                "parent_name": parent_name,
-                "categories": [{"id": c.id, "名称": c.name} for c in cats_by_parent[parent_id]]
+        # ルートカテゴリ（大分類）を取得
+        def get_root_parent(cat_id):
+            if cat_id is None:
+                return None
+            cat = cats_by_id.get(cat_id)
+            if cat is None:
+                return None
+            if cat.parent_id is None:
+                return cat
+            return get_root_parent(cat.parent_id)
+        
+        # 3階層構造を構築
+        cats_hierarchy = []
+        
+        # 大分類（parent_idがNone）を取得
+        root_cats = [c for c in cats if c.parent_id is None]
+        
+        for root_cat in sorted(root_cats, key=lambda x: (x.display_order, x.name)):
+            # 中分類（大分類の子）を取得
+            mid_cats = cats_by_parent.get(root_cat.id, [])
+            
+            mid_list = []
+            for mid_cat in sorted(mid_cats, key=lambda x: (x.display_order, x.name)):
+                # 小分類（中分類の子）を取得
+                small_cats = cats_by_parent.get(mid_cat.id, [])
+                
+                small_list = [{"id": c.id, "名称": c.name} for c in sorted(small_cats, key=lambda x: (x.display_order, x.name))]
+                
+                mid_list.append({
+                    "id": mid_cat.id,
+                    "名称": mid_cat.name,
+                    "small": small_list
+                })
+            
+            cats_hierarchy.append({
+                "id": root_cat.id,
+                "名称": root_cat.name,
+                "mid": mid_list
             })
+        
+        cats_grouped = cats_hierarchy
         
         menu = s.query(Menu.id, Menu.name).order_by(Menu.display_order, Menu.name).all()
         printers = s.query(Printer.id, Printer.name).filter(Printer.enabled == 1).order_by(Printer.name).all()

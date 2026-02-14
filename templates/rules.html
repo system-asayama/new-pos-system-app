@@ -9,10 +9,14 @@
       <label>カテゴリ（任意）</label>
       <select name="カテゴリID">
         <option value="">(なし)</option>
-        {% for group in cats %}
-          <optgroup label="{{ group['parent_name'] }}">
-            {% for c in group['categories'] %}
-              <option value="{{ c['id'] }}">{{ c['名称'] }}</option>
+        {% for large in cats %}
+          <optgroup label="■ {{ large['名称'] }} (大分類)">
+            <option value="{{ large['id'] }}">【大】{{ large['名称'] }}</option>
+            {% for mid in large['mid'] %}
+              <option value="{{ mid['id'] }}">&nbsp;&nbsp;【中】{{ mid['名称'] }}</option>
+              {% for small in mid['small'] %}
+                <option value="{{ small['id'] }}">&nbsp;&nbsp;&nbsp;&nbsp;【小】{{ small['名称'] }}</option>
+              {% endfor %}
             {% endfor %}
           </optgroup>
         {% endfor %}
