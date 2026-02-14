@@ -2,6 +2,8 @@ const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } = require('electr
 const path = require('path');
 const fs = require('fs');
 const axios = require('axios');
+const net = require('net');
+const os = require('os');
 const escpos = require('escpos');
 escpos.Network = require('escpos-network');
 
@@ -251,6 +253,79 @@ ipcMain.handle('test-connection', async (event, testConfig) => {
     } catch (error) {
         return { success: false, message: error.message };
     }
+});
+
+// プリンタを自動検出
+ipcMain.handle('scan-printers', async () => {
+    return new Promise((resolve) => {
+        const printers = [];
+        const networkInterfaces = os.networkInterfaces();
+        
+        // ローカルIPアドレスを取得
+        let localIp = null;
+        for (const name of Object.keys(networkInterfaces)) {
+            for (const iface of networkInterfaces[name]) {
+                if (iface.family === 'IPv4' && !iface.internal) {
+                    localIp = iface.address;
+                    break;
+                }
+            }
+            if (localIp) break;
+        }
+        
+        if (!localIp) {
+            resolve([]);
+            return;
+        }
+        
+        // ネットワークの範囲を計算（例: 192.168.1.x）
+        const ipParts = localIp.split('.');
+        const baseIp = `${ipParts[0]}.${ipParts[1]}.${ipParts[2]}`;
+        
+        let completed = 0;
+        const total = 254; // 1-254までスキャン
+        
+        // タイムアウト設定
+        const timeout = setTimeout(() => {
+            resolve(printers);
+        }, 30000); // 30秒でタイムアウト
+        
+        // 各IPアドレスをスキャン
+        for (let i = 1; i <= 254; i++) {
+            const ip = `${baseIp}.${i}`;
+            
+            // ポート9100に接続を試みる
+            const socket = new net.Socket();
+            socket.setTimeout(1000); // 1秒タイムアウト
+            
+            socket.on('connect', () => {
+                printers.push({
+                    ip: ip,
+                    port: 9100,
+                    status: 'online'
+                });
+                socket.destroy();
+            });
+            
+            socket.on('timeout', () => {
+                socket.destroy();
+            });
+            
+            socket.on('error', () => {
+                // 接続失敗（プリンタではない）
+            });
+            
+            socket.on('close', () => {
+                completed++;
+                if (completed === total) {
+                    clearTimeout(timeout);
+                    resolve(printers);
+                }
+            });
+            
+            socket.connect(9100, ip);
+        }
+    });
 });
 
 // アプリ起動時

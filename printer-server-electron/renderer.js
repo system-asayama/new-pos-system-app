@@ -103,3 +103,64 @@ ipcRenderer.on('new-orders', (event, count) => {
 ipcRenderer.on('polling-error', (event, message) => {
     showStatus('エラー: ' + message, 'error');
 });
+
+// プリンタを検索
+async function scanPrinters() {
+    const scanResults = document.getElementById('scanResults');
+    scanResults.style.display = 'block';
+    scanResults.innerHTML = `
+        <div class="scanning">
+            <div class="spinner"></div>
+            <p>ローカルネットワークをスキャン中...</p>
+            <p style="font-size: 12px; margin-top: 10px;">最大30秒かかる場合があります</p>
+        </div>
+    `;
+    
+    showStatus('プリンタを検索中...', 'info');
+    
+    try {
+        const printers = await ipcRenderer.invoke('scan-printers');
+        
+        if (printers.length === 0) {
+            scanResults.innerHTML = `
+                <div class="scanning">
+                    <p>❌ プリンタが見つかりませんでした</p>
+                    <p style="font-size: 12px; margin-top: 10px;">プリンタの電源とネットワーク接続を確認してください</p>
+                </div>
+            `;
+            showStatus('プリンタが見つかりませんでした', 'error');
+        } else {
+            let html = '<div class="scan-results">';
+            html += `<p style="margin-bottom: 10px; font-weight: bold;">${printers.length}台のプリンタを検出しました：</p>`;
+            
+            for (const printer of printers) {
+                html += `
+                    <div class="printer-item" onclick="selectPrinter('${printer.ip}', ${printer.port})">
+                        <div class="ip">📡 ${printer.ip}</div>
+                        <div class="port">ポート: ${printer.port}</div>
+                    </div>
+                `;
+            }
+            
+            html += '</div>';
+            scanResults.innerHTML = html;
+            showStatus(`${printers.length}台のプリンタを検出しました`, 'success');
+        }
+    } catch (error) {
+        scanResults.innerHTML = `
+            <div class="scanning">
+                <p>❌ エラーが発生しました</p>
+                <p style="font-size: 12px; margin-top: 10px;">${error.message}</p>
+            </div>
+        `;
+        showStatus('検索中にエラーが発生しました: ' + error.message, 'error');
+    }
+}
+
+// プリンタを選択
+function selectPrinter(ip, port) {
+    document.getElementById('printerIp').value = ip;
+    document.getElementById('printerPort').value = port;
+    document.getElementById('scanResults').style.display = 'none';
+    showStatus(`プリンタ ${ip}:${port} を選択しました`, 'success');
+}

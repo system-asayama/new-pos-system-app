@@ -188,6 +188,62 @@
             color: #666;
             margin-top: 5px;
         }
+
+        .scan-results {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .printer-item {
+            padding: 10px;
+            margin: 5px 0;
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .printer-item:hover {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .printer-item .ip {
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .printer-item .port {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+
+        .scanning {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 10px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -224,8 +280,12 @@
 
                 <div class="form-group">
                     <label for="printerIp">プリンタIPアドレス</label>
-                    <input type="text" id="printerIp" name="printerIp" placeholder="192.168.1.213" required>
-                    <div class="help-text">プリンタのIPアドレスを入力してください</div>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="printerIp" name="printerIp" placeholder="192.168.1.213" required style="flex: 1;">
+                        <button type="button" class="btn-secondary" onclick="scanPrinters()" style="flex: 0 0 auto; white-space: nowrap;">🔍 検索</button>
+                    </div>
+                    <div class="help-text">プリンタのIPアドレスを入力するか、検索ボタンで自動検出してください</div>
+                    <div id="scanResults" style="display: none; margin-top: 10px;"></div>
                 </div>
 
                 <div class="form-group">
