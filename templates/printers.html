@@ -118,6 +118,10 @@
           <form method="post" action="{{ url_for('admin_printers_toggle', pid=p['id']) }}" style="display:inline">
             <button class="btn sub" type="submit">有効切替</button>
           </form>
+          <button class="btn sub" onclick="editPrinter({{ p['id'] }}, '{{ p['名称'] }}', '{{ p['種別'] }}', '{{ p['接続情報'] }}', {{ p['幅文字'] }})">編集</button>
+          <form method="post" action="{{ url_for('admin_printers_delete', pid=p['id']) }}" style="display:inline" onsubmit="return confirm('プリンタ「{{ p['名称'] }}」を削除しますか？')">
+            <button class="btn sub" type="submit" style="background:#dc3545; color:white">削除</button>
+          </form>
         </td>
       </tr>
       {% endfor %}
@@ -298,5 +302,49 @@
     }
   });
 })();
+
+// 編集機能
+window.editPrinter = function(id, name, kind, conn, width) {
+  const form = document.querySelector('form[action*="/new"]');
+  if (!form) return;
+  
+  // フォームに値を設定
+  form.querySelector('input[name="名称"]').value = name;
+  form.querySelector('select[name="種別"]').value = kind;
+  form.querySelector('input[name="接続情報"]').value = conn;
+  form.querySelector('input[name="幅文字"]').value = width;
+  
+  // フォームのactionを編集用に変更
+  form.action = `/admin/printers/${id}/edit`;
+  
+  // ボタンのテキストを変更
+  const btn = form.querySelector('button[type="submit"]');
+  btn.textContent = '更新';
+  btn.style.background = '#28a745';
+  
+  // キャンセルボタンを追加
+  if (!form.querySelector('.cancel-edit')) {
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'btn sub cancel-edit';
+    cancelBtn.textContent = 'キャンセル';
+    cancelBtn.onclick = function() {
+      form.reset();
+      form.action = form.dataset.originalAction || '/admin/printers/new';
+      btn.textContent = '追加';
+      btn.style.background = '';
+      cancelBtn.remove();
+    };
+    btn.parentNode.insertBefore(cancelBtn, btn.nextSibling);
+  }
+  
+  // 元のactionを保存
+  if (!form.dataset.originalAction) {
+    form.dataset.originalAction = '/admin/printers/new';
+  }
+  
+  // フォームにスクロール
+  form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+};
 </script>
 {% endblock %}

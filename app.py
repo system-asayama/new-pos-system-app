@@ -12046,6 +12046,42 @@ def admin_printers_toggle(pid):
         SessionLocal.remove()
 
 
+# --- プリンタ削除 --------------------------------------------------------------
+@app.route("/admin/printers/<int:pid>/delete", methods=["POST"])
+@require_admin
+def admin_printers_delete(pid):
+    s = SessionLocal()
+    try:
+        p = s.get(Printer, pid)
+        if p:
+            s.delete(p)
+            s.commit()
+        return redirect(url_for("admin_printers"))
+    finally:
+        s.close()
+        SessionLocal.remove()
+
+
+# --- プリンタ編集 --------------------------------------------------------------
+@app.route("/admin/printers/<int:pid>/edit", methods=["POST"])
+@require_admin
+def admin_printers_edit(pid):
+    s = SessionLocal()
+    try:
+        p = s.get(Printer, pid)
+        if p:
+            f = request.form
+            p.name = f.get("名称", "").strip()
+            p.kind = f.get("種別", "escpos_tcp")
+            p.connection = f.get("接続情報", "").strip()
+            p.width = int(f.get("幅文字", "42") or "42")
+            s.commit()
+        return redirect(url_for("admin_printers"))
+    finally:
+        s.close()
+        SessionLocal.remove()
+
+
 # --- プリンタ自動検出API（JSON） ------------------------------------------------
 @app.route("/admin/printers/discover", methods=["GET"], endpoint="admin_printers_discover")
 @require_admin
