@@ -19244,3 +19244,43 @@ def download_printer_server():
         as_attachment=True,
         download_name='printer-server.zip'
     )
+
+# ========================================
+# printer-server EXE版ダウンロード
+# ========================================
+@app.route("/download/printer-server-exe")
+def download_printer_server_exe():
+    """
+    printer-server Electron版のインストーラー(.exe)をダウンロード
+    
+    注意: このエンドポイントは、事前にビルドされたEXEファイルが
+    printer-server-electron/dist/ に存在する必要があります。
+    
+    ビルド方法:
+    1. cd printer-server-electron
+    2. npm install
+    3. npm run build:win
+    """
+    import glob
+    from flask import send_file, abort
+    
+    # printer-server-electron/dist フォルダのパス
+    dist_dir = os.path.join(os.path.dirname(__file__), "printer-server-electron", "dist")
+    
+    # .exeファイルを検索
+    exe_files = glob.glob(os.path.join(dist_dir, "*.exe"))
+    
+    if not exe_files:
+        # EXEファイルが見つからない場合はエラー
+        abort(404, description="EXEファイルが見つかりません。ビルドを実行してください。")
+    
+    # 最新のEXEファイルを取得
+    latest_exe = max(exe_files, key=os.path.getmtime)
+    exe_filename = os.path.basename(latest_exe)
+    
+    return send_file(
+        latest_exe,
+        mimetype='application/octet-stream',
+        as_attachment=True,
+        download_name=exe_filename
+    )
