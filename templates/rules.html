@@ -59,4 +59,45 @@
     </table>
   </div>
 </div>
+
+<script>
+// メニューデータをJavaScriptに渡す
+const allMenus = {{ menu|tojson }};
+
+// カテゴリ選択時のイベントリスナー
+const categorySelect = document.querySelector('select[name="カテゴリID"]');
+const menuSelect = document.querySelector('select[name="メニューID"]');
+
+if (categorySelect && menuSelect) {
+  categorySelect.addEventListener('change', function() {
+    const selectedCategoryId = parseInt(this.value) || 0;
+    
+    // メニュードロップダウンをクリア
+    menuSelect.innerHTML = '<option value="">(なし)</option>';
+    
+    // カテゴリが選択されていない場合はすべて表示
+    if (selectedCategoryId === 0) {
+      allMenus.forEach(menu => {
+        const option = document.createElement('option');
+        option.value = menu.id;
+        option.textContent = menu['名称'];
+        menuSelect.appendChild(option);
+      });
+    } else {
+      // 選択されたカテゴリに属するメニューのみ表示
+      allMenus.forEach(menu => {
+        if (menu.category_ids && menu.category_ids.includes(selectedCategoryId)) {
+          const option = document.createElement('option');
+          option.value = menu.id;
+          option.textContent = menu['名称'];
+          menuSelect.appendChild(option);
+        }
+      });
+    }
+  });
+  
+  // 初期表示時にもフィルタリングを適用
+  categorySelect.dispatchEvent(new Event('change'));
+}
+</script>
 {% endblock %}

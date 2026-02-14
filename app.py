@@ -12312,10 +12312,35 @@ def admin_rules():
         
         cats_grouped = cats_hierarchy
         
-        menu = s.query(Menu.id, Menu.name).order_by(Menu.display_order, Menu.name).all()
+        # メニューとそのカテゴリを取得
+        menu = s.query(Menu).order_by(Menu.display_order, Menu.name).all()
+        
+        # 各メニューのカテゴリーIDを取得
+        menu_dict = []
+        for m in menu:
+            # このメニューが属するカテゴリーIDを取得
+            cat_links = s.query(ProductCategoryLink.category_id).filter(
+                ProductCategoryLink.product_id == m.id
+            ).all()
+            cat_ids = [c.category_id for c in cat_links]
+            
+            # 子孫カテゴリーを含むため、親カテゴリーも追加
+            all_cat_ids = set(cat_ids)
+            for cat_id in cat_ids:
+                # 親カテゴリーを再帰的に取得
+                current_cat = cats_by_id.get(cat_id)
+                while current_cat and current_cat.parent_id:
+                    all_cat_ids.add(current_cat.parent_id)
+                    current_cat = cats_by_id.get(current_cat.parent_id)
+            
+            menu_dict.append({
+                "id": m.id,
+                "名称": m.name,
+                "category_ids": list(all_cat_ids)
+            })
+        
         printers = s.query(Printer.id, Printer.name).filter(Printer.enabled == 1).order_by(Printer.name).all()
         cats_dict = cats_grouped
-        menu_dict = [{"id": m.id, "名称": m.name} for m in menu]
         printers_dict = [{"id": p.id, "名称": p.name} for p in printers]
         return render_template("rules.html", title="印刷ルール",
                                rules=out_rules, cats=cats_dict, menu=menu_dict, printers=printers_dict)
