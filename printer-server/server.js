@@ -3,16 +3,46 @@ const cors = require('cors');
 const { exec } = require('child_process');
 const os = require('os');
 const iconv = require('iconv-lite');
+const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 const PORT = 3001;
 
-// プリンター名の設定（環境変数または固定値）
-const PRINTER_NAME = process.env.PRINTER_NAME || 'EPSON TM-T90 ReceiptJ4';
+// 設定ファイルの読み込み
+const CONFIG_FILE = path.join(__dirname, 'config.json');
+let config = {
+  printerName: process.env.PRINTER_NAME || 'EPSON TM-T90 ReceiptJ4',
+  autoPolling: {
+    enabled: false,
+    herokuUrl: '',
+    storeId: null,
+    apiKey: '',
+    interval: 10000 // 10秒ごと
+  }
+};
+
+// 設定ファイルが存在すれば読み込む
+if (fs.existsSync(CONFIG_FILE)) {
+  try {
+    const fileConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+    config = { ...config, ...fileConfig };
+    console.log('[CONFIG] 設定ファイルを読み込みました');
+  } catch (e) {
+    console.error('[CONFIG] 設定ファイルの読み込みに失敗しました:', e);
+  }
+}
+
+// プリンター名の設定
+const PRINTER_NAME = config.printerName;
 
 // ミドルウェア
 app.use(cors());
 app.use(express.json());
+
+// 最後に処理した注文ID（重複印刷防止）
+let lastProcessedOrderId = 0;
 
 // プリンター接続確認（Windows）
 function checkPrinter() {
@@ -41,8 +71,6 @@ function printText(text) {
       return;
     }
     
-    const fs = require('fs');
-    const path = require('path');
     const tempFile = path.join(os.tmpdir(), `print_${Date.now()}.txt`);
     
     // ESC/POSコマンドを追加
@@ -100,6 +128,84 @@ function printText(text) {
   });
 }
 
+// 新規注文をポーリング
+async function pollNewOrders() {
+  if (!config.autoPolling.enabled) {
+    return;
+  }
+  
+  const { herokuUrl, storeId, apiKey } = config.autoPolling;
+  
+  if (!herokuUrl || !storeId || !apiKey) {
+    console.error('[POLLING] 設定が不完全です。config.jsonを確認してください。');
+    return;
+  }
+  
+  try {
+    const url = `${herokuUrl}/api/printer-server/new-orders?store_id=${storeId}&api_key=${encodeURIComponent(apiKey)}&since_id=${lastProcessedOrderId}`;
+    const response = await axios.get(url, { timeout: 5000 });
+    
+    if (!response.data.ok) {
+      console.error('[POLLING] APIエラー:', response.data.error);
+      return;
+    }
+    
+    const orders = response.data.orders || [];
+    
+    if (orders.length > 0) {
+      console.log(`[POLLING] 新規注文 ${orders.length} 件を検出`);
+      
+      for (const order of orders) {
+        try {
+          // 印刷データを取得
+          const printDataUrl = `${herokuUrl}/api/print_data/${order.id}`;
+          const printDataResponse = await axios.get(printDataUrl, { timeout: 5000 });
+          
+          if (printDataResponse.data.text) {
+            console.log(`[POLLING] 注文 #${order.id} を印刷中...`);
+            await printText(printDataResponse.data.text);
+            console.log(`[POLLING] 注文 #${order.id} の印刷完了`);
+            
+            // 最後に処理したIDを更新
+            if (order.id > lastProcessedOrderId) {
+              lastProcessedOrderId = order.id;
+            }
+          }
+        } catch (printError) {
+          console.error(`[POLLING] 注文 #${order.id} の印刷に失敗:`, printError.message);
+        }
+      }
+    }
+  } catch (error) {
+    if (error.code === 'ECONNREFUSED') {
+      console.error('[POLLING] Herokuに接続できません。URLを確認してください。');
+    } else if (error.code === 'ETIMEDOUT') {
+      console.error('[POLLING] タイムアウト。ネットワーク接続を確認してください。');
+    } else {
+      console.error('[POLLING] エラー:', error.message);
+    }
+  }
+}
+
+// 自動ポーリングの開始
+let pollingInterval = null;
+function startAutoPolling() {
+  if (config.autoPolling.enabled && !pollingInterval) {
+    console.log(`[POLLING] 自動ポーリングを開始します（間隔: ${config.autoPolling.interval}ms）`);
+    pollingInterval = setInterval(pollNewOrders, config.autoPolling.interval);
+    // 即座に1回実行
+    pollNewOrders();
+  }
+}
+
+function stopAutoPolling() {
+  if (pollingInterval) {
+    console.log('[POLLING] 自動ポーリングを停止します');
+    clearInterval(pollingInterval);
+    pollingInterval = null;
+  }
+}
+
 // ヘルスチェック
 app.get('/health', async (req, res) => {
   const isConnected = await checkPrinter();
@@ -129,13 +235,44 @@ app.get('/info', async (req, res) => {
   res.json({
     type: 'printer_server',
     name: 'Node.js Print Server',
-    version: '1.0.0',
+    version: '2.0.0',
     platform: os.platform(),
     printer_name: PRINTER_NAME,
     printer_connected: isConnected,
     ip_addresses: ipAddresses,
-    port: PORT
+    port: PORT,
+    auto_polling: {
+      enabled: config.autoPolling.enabled,
+      interval: config.autoPolling.interval,
+      last_processed_order_id: lastProcessedOrderId
+    }
   });
+});
+
+// 設定の取得
+app.get('/config', (req, res) => {
+  res.json(config);
+});
+
+// 設定の更新
+app.post('/config', (req, res) => {
+  try {
+    const newConfig = req.body;
+    config = { ...config, ...newConfig };
+    
+    // ファイルに保存
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
+    
+    // ポーリングの再起動
+    stopAutoPolling();
+    if (config.autoPolling.enabled) {
+      startAutoPolling();
+    }
+    
+    res.json({ success: true, message: '設定を更新しました', config });
+  } catch (error) {
+    res.status(500).json({ error: '設定の保存に失敗しました', details: error.message });
+  }
 });
 
 // レシート印刷
@@ -421,5 +558,12 @@ app.listen(PORT, async () => {
         }
       });
     }
+  }
+  
+  // 自動ポーリングの開始
+  if (config.autoPolling.enabled) {
+    startAutoPolling();
+  } else {
+    console.log('[INFO] 自動ポーリングは無効です。有効にするには config.json を編集してください。');
   }
 });

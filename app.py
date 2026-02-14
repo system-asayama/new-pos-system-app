@@ -19060,6 +19060,72 @@ if __name__ == "__main__":
 
 
 # ========================================
+# printer-server 用 API
+# ========================================
+@app.route("/api/printer-server/new-orders", methods=["GET"])
+def api_printer_server_new_orders():
+    """
+    printer-serverが新規注文を取得するためのAPI
+    クエリパラメータ:
+      - store_id: 店舗ID
+      - api_key: 認証用APIキー
+      - since_id: このID以降の注文を取得（オプション）
+    レスポンス:
+      { "ok": true, "orders": [{"id": 123, "table_name": "テーブル1", "created_at": "..."}] }
+    """
+    from flask import request
+    import os
+    
+    # APIキー認証（環境変数から取得）
+    expected_api_key = os.getenv("PRINTER_SERVER_API_KEY", "your-secret-key-here")
+    provided_api_key = request.args.get("api_key", "")
+    
+    if provided_api_key != expected_api_key:
+        return jsonify({"ok": False, "error": "Invalid API key"}), 401
+    
+    store_id = request.args.get("store_id", type=int)
+    if not store_id:
+        return jsonify({"ok": False, "error": "store_id is required"}), 400
+    
+    since_id = request.args.get("since_id", type=int, default=0)
+    
+    s = SessionLocal()
+    try:
+        # 新規注文を取得（since_id以降、会計済でないもの）
+        query = s.query(OrderHeader).filter(
+            OrderHeader.store_id == store_id,
+            OrderHeader.id > since_id,
+            OrderHeader.status.notin_(["会計済", "closed", "paid"])
+        ).order_by(OrderHeader.id.asc())
+        
+        headers = query.all()
+        
+        orders = []
+        for h in headers:
+            table_name = "不明"
+            if h.table_id:
+                table = s.get(TableSeat, h.table_id)
+                if table:
+                    table_name = table.name or f"Table {h.table_id}"
+            
+            orders.append({
+                "id": h.id,
+                "table_name": table_name,
+                "status": h.status or "新規",
+                "created_at": h.created_at.isoformat() if h.created_at else None
+            })
+        
+        return jsonify({"ok": True, "orders": orders})
+    
+    except Exception as e:
+        app.logger.error(f"[api_printer_server_new_orders] error: {e}", exc_info=True)
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        s.close()
+        SessionLocal.remove()
+
+
+# ========================================
 # printer-server ZIPダウンロード
 # ========================================
 @app.route("/download/printer-server")

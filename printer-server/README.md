@@ -90,13 +90,59 @@ http://localhost:3001/health
 
 ## 使用方法
 
-### レシート印刷
+### 自動印刷モード（推奨）
 
-POSシステムの会計画面で「レシート印刷」ボタンをクリックすると、自動的に印刷されます。
+**ブラウザを開かなくても、新規注文が入ると自動的に印刷されます。**
 
-### 注文伝票印刷
+#### 設定手順
 
-POSシステムの注文確定画面で「伝票印刷」ボタンをクリックすると、キッチン用の注文伝票が印刷されます。
+1. `config.json.sample` を `config.json` にコピー
+2. `config.json` を編集：
+   ```json
+   {
+     "printerName": "EPSON TM-T90 ReceiptJ4",
+     "autoPolling": {
+       "enabled": true,
+       "herokuUrl": "https://your-app.herokuapp.com",
+       "storeId": 1,
+       "apiKey": "your-secret-key-here",
+       "interval": 10000
+     }
+   }
+   ```
+3. 各項目を設定：
+   - `printerName`: Windowsに登録されているプリンター名
+   - `enabled`: `true` で自動印刷を有効化
+   - `herokuUrl`: POSシステムのURL（例: https://gon-pos-system.herokuapp.com）
+   - `storeId`: 店舗ID（管理画面で確認）
+   - `apiKey`: APIキー（Herokuの環境変数 `PRINTER_SERVER_API_KEY` と同じ値）
+   - `interval`: チェック間隔（ミリ秒、10000 = 10秒）
+
+4. Herokuの環境変数を設定：
+   ```bash
+   heroku config:set PRINTER_SERVER_API_KEY=your-secret-key-here
+   ```
+
+5. `start.bat` をダブルクリックして起動
+
+起動後、以下のメッセージが表示されれば成功：
+```
+[POLLING] 自動ポーリングを開始します（間隔: 10000ms）
+```
+
+新規注文が入ると、自動的に印刷されます。
+
+### 手動印刷モード
+
+POSシステムの管理画面で「印刷」ボタンをクリックすると印刷されます。
+
+#### レシート印刷
+
+会計画面で「レシート印刷」ボタンをクリック
+
+#### 注文伝票印刷
+
+注文確定画面で「伝票印刷」ボタンをクリック
 
 ## トラブルシューティング
 
@@ -139,6 +185,55 @@ Windowsの起動時に印刷サーバーを自動起動するには：
 
 ```
 GET http://localhost:3001/health
+```
+
+### サーバー情報（自動検出用）
+
+```
+GET http://localhost:3001/info
+```
+
+レスポンス例：
+```json
+{
+  "type": "printer_server",
+  "name": "Node.js Print Server",
+  "version": "2.0.0",
+  "platform": "win32",
+  "printer_name": "EPSON TM-T90 ReceiptJ4",
+  "printer_connected": true,
+  "ip_addresses": ["192.168.1.66"],
+  "port": 3001,
+  "auto_polling": {
+    "enabled": true,
+    "interval": 10000,
+    "last_processed_order_id": 123
+  }
+}
+```
+
+### 設定の取得
+
+```
+GET http://localhost:3001/config
+```
+
+### 設定の更新
+
+```
+POST http://localhost:3001/config
+Content-Type: application/json
+
+{
+  "printerName": "EPSON TM-T90 ReceiptJ4",
+  "autoPolling": {
+    "enabled": true,
+    "herokuUrl": "https://your-app.herokuapp.com",
+    "storeId": 1,
+    "apiKey": "your-secret-key-here",
+    "interval": 10000
+  }
+}
 ```
 
 ### レシート印刷

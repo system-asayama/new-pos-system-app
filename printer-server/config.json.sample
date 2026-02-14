@@ -1,0 +1,10 @@
+{
+  "printerName": "EPSON TM-T90 ReceiptJ4",
+  "autoPolling": {
+    "enabled": false,
+    "herokuUrl": "https://your-app.herokuapp.com",
+    "storeId": 1,
+    "apiKey": "your-secret-key-here",
+    "interval": 10000
+  }
+}
