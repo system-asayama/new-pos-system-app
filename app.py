@@ -19057,3 +19057,39 @@ if __name__ == "__main__":
     host = "0.0.0.0"                           # ← 重要：外部端末（スマホ）からアクセス可
     port = int(os.getenv("PORT", "5000"))      # 任意のポートにしたい場合は環境変数で上書き
     app.run(host=host, port=port, debug=True, threaded=True)
+
+
+# ========================================
+# printer-server ZIPダウンロード
+# ========================================
+@app.route("/download/printer-server")
+def download_printer_server():
+    """
+    printer-serverフォルダをZIP化してダウンロード
+    """
+    import zipfile
+    import io
+    from flask import send_file
+    
+    # printer-serverフォルダのパス
+    printer_server_dir = os.path.join(os.path.dirname(__file__), "printer-server")
+    
+    # ZIPファイルをメモリ上に作成
+    memory_file = io.BytesIO()
+    
+    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        # printer-serverフォルダ内のすべてのファイルを追加
+        for root, dirs, files in os.walk(printer_server_dir):
+            for file in files:
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, os.path.dirname(printer_server_dir))
+                zipf.write(file_path, arcname)
+    
+    memory_file.seek(0)
+    
+    return send_file(
+        memory_file,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name='printer-server.zip'
+    )
