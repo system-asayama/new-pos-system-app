@@ -2068,6 +2068,8 @@ def migrate_schema_if_needed():
                 conn.exec_driver_sql('ALTER TABLE "M_店舗" ADD COLUMN "レシートフッター" TEXT')
             if "印刷サーバーURL" not in cols:
                 conn.exec_driver_sql('ALTER TABLE "M_店舗" ADD COLUMN "印刷サーバーURL" VARCHAR')
+            if "プリンターサーバーAPIキー" not in cols:
+                conn.exec_driver_sql('ALTER TABLE "M_店舗" ADD COLUMN "プリンターサーバーAPIキー" VARCHAR')
             if "調理中ステータス使用" not in cols:
                 conn.exec_driver_sql('ALTER TABLE "M_店舗" ADD COLUMN "調理中ステータス使用" INTEGER NOT NULL DEFAULT 1')
         
