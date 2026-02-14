@@ -11992,8 +11992,20 @@ def admin_printers():
         if sid is not None and hasattr(Printer, "store_id"):
             q = q.filter(Printer.store_id == sid)      # ★ 店舗で絞る
         rows = q.order_by(Printer.id).all()
-        printers = [{"id": p.id, "名称": p.name, "種別": p.kind, "接続情報": p.connection,
-                     "幅文字": p.width, "有効": p.enabled} for p in rows]
+        printers = []
+        for p in rows:
+            # 印刷ルールで使用されているかチェック
+            rule_count = s.query(PrintRule).filter(PrintRule.printer_id == p.id).count()
+            printers.append({
+                "id": p.id,
+                "名称": p.name,
+                "種別": p.kind,
+                "接続情報": p.connection,
+                "幅文字": p.width,
+                "有効": p.enabled,
+                "使用中": rule_count > 0,
+                "ルール数": rule_count
+            })
         return render_template(
             "printers.html",
             title="プリンタ",
@@ -12054,6 +12066,11 @@ def admin_printers_delete(pid):
     try:
         p = s.get(Printer, pid)
         if p:
+            # 印刷ルールで使用されているかチェック
+            rule_count = s.query(PrintRule).filter(PrintRule.printer_id == pid).count()
+            if rule_count > 0:
+                # 使用中の場合、関連する印刷ルールも削除
+                s.query(PrintRule).filter(PrintRule.printer_id == pid).delete()
             s.delete(p)
             s.commit()
         return redirect(url_for("admin_printers"))

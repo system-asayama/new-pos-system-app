@@ -119,7 +119,7 @@
             <button class="btn sub" type="submit">有効切替</button>
           </form>
           <button class="btn sub" onclick="editPrinter({{ p['id'] }}, '{{ p['名称'] }}', '{{ p['種別'] }}', '{{ p['接続情報'] }}', {{ p['幅文字'] }})">編集</button>
-          <form method="post" action="{{ url_for('admin_printers_delete', pid=p['id']) }}" style="display:inline" onsubmit="return confirm('プリンタ「{{ p['名称'] }}」を削除しますか？')">
+          <form method="post" action="{{ url_for('admin_printers_delete', pid=p['id']) }}" style="display:inline" onsubmit="return confirm('{% if p['使用中'] %}このプリンタは{{ p['ルール数'] }}件の印刷ルールで使用中です。\n削除すると関連する印刷ルールも削除されます。\n\n{% endif %}プリンタ「{{ p['名称'] }}」を削除しますか？')">
             <button class="btn sub" type="submit" style="background:#dc3545; color:white">削除</button>
           </form>
         </td>
