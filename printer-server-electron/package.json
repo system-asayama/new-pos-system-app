@@ -22,6 +22,7 @@
   "build": {
     "appId": "com.yourcompany.printer-server",
     "productName": "プリンターサーバー",
+    "publish": null,
     "win": {
       "target": [
         {
@@ -41,11 +42,7 @@
       "shortcutName": "プリンターサーバー"
     },
     "files": [
-      "**/*",
-      "!node_modules/**/*",
-      "node_modules/axios/**/*",
-      "node_modules/escpos/**/*",
-      "node_modules/escpos-network/**/*"
+      "**/*"
     ]
   }
 }
