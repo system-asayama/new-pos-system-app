@@ -22,6 +22,21 @@ function loadConfig() {
         if (fs.existsSync(configPath)) {
             const data = fs.readFileSync(configPath, 'utf8');
             config = JSON.parse(data);
+            
+            // 旧形式から新形式への移行
+            if (config.printerIp && !config.printers) {
+                config.printers = [{
+                    id: 1,
+                    name: 'メインプリンタ',
+                    ip: config.printerIp,
+                    port: config.printerPort || 9100,
+                    enabled: true
+                }];
+                delete config.printerIp;
+                delete config.printerPort;
+                saveConfig(config);
+            }
+            
             return config;
         }
     } catch (error) {
@@ -45,8 +60,8 @@ function saveConfig(newConfig) {
 // メインウィンドウを作成
 function createWindow() {
     mainWindow = new BrowserWindow({
-        width: 600,
-        height: 700,
+        width: 700,
+        height: 800,
         webPreferences: {
             nodeIntegration: true,
             contextIsolation: false
@@ -102,100 +117,122 @@ function createTray() {
     });
 }
 
-// 新規注文をチェック
-async function checkNewOrders() {
-    if (!config || !config.enabled) {
-        return;
-    }
-
-    try {
-        const response = await axios.get(`${config.herokuUrl}/api/printer-server/new-orders`, {
-            params: {
-                store_id: config.storeId,
-                last_id: lastOrderId
-            },
-            headers: {
-                'X-API-Key': config.apiKey
-            },
-            timeout: 10000
-        });
-
-        if (response.data && response.data.orders && response.data.orders.length > 0) {
-            for (const order of response.data.orders) {
-                await printOrder(order);
-                if (order.id > lastOrderId) {
-                    lastOrderId = order.id;
-                }
-            }
-            
-            // ウィンドウに通知
-            if (mainWindow) {
-                mainWindow.webContents.send('new-orders', response.data.orders.length);
-            }
-        }
-    } catch (error) {
-        console.error('注文チェックエラー:', error.message);
-        if (mainWindow) {
-            mainWindow.webContents.send('polling-error', error.message);
-        }
-    }
+// 自動起動を設定
+function setupAutoLaunch() {
+    app.setLoginItemSettings({
+        openAtLogin: true,
+        path: app.getPath('exe')
+    });
 }
 
-// 注文を印刷
-async function printOrder(order) {
+// プリンタに印刷
+async function printToDevice(printerConfig, orderData) {
     return new Promise((resolve, reject) => {
         try {
-            // プリンタIPアドレスを取得
-            const printerIp = config.printerIp || '192.168.1.213';
-            const printerPort = config.printerPort || 9100;
-
-            const device = new escpos.Network(printerIp, printerPort);
+            const device = new escpos.Network(printerConfig.ip, printerConfig.port);
             const printer = new escpos.Printer(device);
 
             device.open((error) => {
                 if (error) {
-                    console.error('プリンタ接続エラー:', error);
-                    reject(error);
+                    reject(new Error(`プリンタ接続エラー (${printerConfig.name}): ${error.message}`));
                     return;
                 }
 
-                printer
-                    .font('a')
-                    .align('ct')
-                    .style('bu')
-                    .size(2, 2)
-                    .text(order.table_name || `テーブル ${order.table_no}`)
-                    .size(1, 1)
-                    .style('normal')
-                    .text('--------------------------------')
-                    .align('lt');
+                try {
+                    printer
+                        .font('a')
+                        .align('ct')
+                        .style('bu')
+                        .size(2, 2)
+                        .text(orderData.title || '注文伝票')
+                        .size(1, 1)
+                        .style('normal')
+                        .text('------------------------')
+                        .align('lt')
+                        .text(`注文番号: ${orderData.orderNumber || ''}`)
+                        .text(`テーブル: ${orderData.table || ''}`)
+                        .text(`日時: ${orderData.datetime || ''}`)
+                        .text('------------------------');
 
-                // 注文明細
-                if (order.items && order.items.length > 0) {
-                    for (const item of order.items) {
-                        const qty = item.qty || item.数量 || 1;
-                        const name = item.menu_name || item.商品名 || '';
-                        printer.text(`${name} x${qty}`);
+                    if (orderData.items && orderData.items.length > 0) {
+                        orderData.items.forEach(item => {
+                            printer.text(`${item.name} x${item.quantity}`);
+                            if (item.notes) {
+                                printer.text(`  備考: ${item.notes}`);
+                            }
+                        });
                     }
-                }
 
-                printer
-                    .text('--------------------------------')
-                    .align('ct')
-                    .text(`注文番号: ${order.id}`)
-                    .text(`${new Date().toLocaleString('ja-JP')}`)
-                    .feed(3)
-                    .cut()
-                    .close(() => {
-                        console.log(`注文 #${order.id} を印刷しました`);
-                        resolve();
-                    });
+                    printer
+                        .text('------------------------')
+                        .text('')
+                        .cut()
+                        .close(() => {
+                            console.log(`印刷完了: ${printerConfig.name}`);
+                            resolve();
+                        });
+                } catch (printError) {
+                    reject(new Error(`印刷エラー (${printerConfig.name}): ${printError.message}`));
+                }
             });
         } catch (error) {
-            console.error('印刷エラー:', error);
-            reject(error);
+            reject(new Error(`プリンタ初期化エラー (${printerConfig.name}): ${error.message}`));
         }
     });
+}
+
+// 新規注文をチェックしてプリント
+async function checkAndPrint() {
+    if (!config || !config.enabled) return;
+    if (!config.printers || config.printers.length === 0) return;
+
+    try {
+        const response = await axios.get(
+            `${config.herokuUrl}/api/printer-server/new-orders`,
+            {
+                params: {
+                    store_id: config.storeId,
+                    last_order_id: lastOrderId
+                },
+                headers: {
+                    'X-API-Key': config.apiKey
+                },
+                timeout: 10000
+            }
+        );
+
+        if (response.data && response.data.orders && response.data.orders.length > 0) {
+            const orders = response.data.orders;
+            console.log(`新規注文: ${orders.length}件`);
+
+            // 有効なプリンタのみフィルタリング
+            const enabledPrinters = config.printers.filter(p => p.enabled);
+
+            if (enabledPrinters.length === 0) {
+                console.log('有効なプリンタがありません');
+                return;
+            }
+
+            // 各注文を全ての有効なプリンタに印刷
+            for (const order of orders) {
+                const printPromises = enabledPrinters.map(printer => 
+                    printToDevice(printer, order).catch(error => {
+                        console.error(`印刷失敗 (${printer.name}):`, error.message);
+                        mainWindow.webContents.send('polling-error', `${printer.name}: ${error.message}`);
+                        return null; // エラーでも続行
+                    })
+                );
+
+                await Promise.all(printPromises);
+                lastOrderId = Math.max(lastOrderId, order.id || 0);
+            }
+
+            mainWindow.webContents.send('new-orders', orders.length);
+        }
+    } catch (error) {
+        console.error('ポーリングエラー:', error.message);
+        mainWindow.webContents.send('polling-error', error.message);
+    }
 }
 
 // ポーリングを開始
@@ -206,11 +243,9 @@ function startPolling() {
 
     if (config && config.enabled) {
         const interval = config.interval || 10000;
-        pollingInterval = setInterval(checkNewOrders, interval);
         console.log(`ポーリング開始: ${interval}ms間隔`);
-        
-        // 即座に1回チェック
-        checkNewOrders();
+        pollingInterval = setInterval(checkAndPrint, interval);
+        checkAndPrint(); // 即座に1回実行
     }
 }
 
@@ -223,7 +258,138 @@ function stopPolling() {
     }
 }
 
-// IPCハンドラー
+// プリンタをスキャン
+async function scanPrinters() {
+    return new Promise((resolve) => {
+        const printers = [];
+        const networkInterfaces = os.networkInterfaces();
+        let baseIp = null;
+
+        // ローカルIPアドレスを取得
+        for (const name of Object.keys(networkInterfaces)) {
+            for (const net of networkInterfaces[name]) {
+                if (net.family === 'IPv4' && !net.internal) {
+                    const parts = net.address.split('.');
+                    if (parts[0] === '192' && parts[1] === '168') {
+                        baseIp = `${parts[0]}.${parts[1]}.${parts[2]}`;
+                        break;
+                    }
+                }
+            }
+            if (baseIp) break;
+        }
+
+        if (!baseIp) {
+            resolve([]);
+            return;
+        }
+
+        console.log(`ネットワークスキャン開始: ${baseIp}.x`);
+
+        const promises = [];
+        for (let i = 1; i <= 254; i++) {
+            const ip = `${baseIp}.${i}`;
+            const promise = new Promise((resolveCheck) => {
+                const socket = new net.Socket();
+                const timeout = setTimeout(() => {
+                    socket.destroy();
+                    resolveCheck();
+                }, 200);
+
+                socket.on('connect', () => {
+                    clearTimeout(timeout);
+                    console.log(`プリンタ検出: ${ip}:9100`);
+                    printers.push({ ip, port: 9100 });
+                    socket.destroy();
+                    resolveCheck();
+                });
+
+                socket.on('error', () => {
+                    clearTimeout(timeout);
+                    resolveCheck();
+                });
+
+                socket.connect(9100, ip);
+            });
+
+            promises.push(promise);
+        }
+
+        Promise.all(promises).then(() => {
+            console.log(`スキャン完了: ${printers.length}台検出`);
+            resolve(printers);
+        });
+    });
+}
+
+// 接続テスト
+async function testConnection(testConfig) {
+    try {
+        const response = await axios.get(
+            `${testConfig.herokuUrl}/api/printer-server/new-orders`,
+            {
+                params: {
+                    store_id: testConfig.storeId,
+                    last_order_id: 0
+                },
+                headers: {
+                    'X-API-Key': testConfig.apiKey
+                },
+                timeout: 10000
+            }
+        );
+
+        return {
+            success: true,
+            message: '接続成功！APIキーが正しく設定されています。'
+        };
+    } catch (error) {
+        if (error.response && error.response.status === 401) {
+            return {
+                success: false,
+                message: 'APIキーが正しくありません'
+            };
+        } else if (error.code === 'ECONNABORTED') {
+            return {
+                success: false,
+                message: '接続タイムアウト'
+            };
+        } else {
+            return {
+                success: false,
+                message: error.message
+            };
+        }
+    }
+}
+
+// アプリ起動時
+app.whenReady().then(() => {
+    createWindow();
+    createTray();
+    setupAutoLaunch();
+
+    // 設定を読み込んでポーリング開始
+    loadConfig();
+    if (config && config.enabled) {
+        startPolling();
+    }
+});
+
+// すべてのウィンドウが閉じられたとき
+app.on('window-all-closed', () => {
+    // macOS以外ではアプリを終了しない（トレイに常駐）
+    if (process.platform !== 'darwin') {
+        // Do nothing - keep running in tray
+    }
+});
+
+// アプリ終了時
+app.on('before-quit', () => {
+    stopPolling();
+});
+
+// IPC通信ハンドラー
 ipcMain.handle('load-config', () => {
     return loadConfig();
 });
@@ -237,130 +403,36 @@ ipcMain.handle('save-config', (event, newConfig) => {
     return result;
 });
 
-ipcMain.handle('test-connection', async (event, testConfig) => {
-    try {
-        const response = await axios.get(`${testConfig.herokuUrl}/api/printer-server/new-orders`, {
-            params: {
-                store_id: testConfig.storeId,
-                last_id: 0
-            },
-            headers: {
-                'X-API-Key': testConfig.apiKey
-            },
-            timeout: 10000
-        });
-        return { success: true, message: '接続成功！' };
-    } catch (error) {
-        return { success: false, message: error.message };
-    }
-});
-
-// プリンタを自動検出
 ipcMain.handle('scan-printers', async () => {
-    return new Promise((resolve) => {
-        const printers = [];
-        const networkInterfaces = os.networkInterfaces();
-        
-        // ローカルIPアドレスを取得
-        let localIp = null;
-        for (const name of Object.keys(networkInterfaces)) {
-            for (const iface of networkInterfaces[name]) {
-                if (iface.family === 'IPv4' && !iface.internal) {
-                    localIp = iface.address;
-                    break;
-                }
-            }
-            if (localIp) break;
-        }
-        
-        if (!localIp) {
-            resolve([]);
-            return;
-        }
-        
-        // ネットワークの範囲を計算（例: 192.168.1.x）
-        const ipParts = localIp.split('.');
-        const baseIp = `${ipParts[0]}.${ipParts[1]}.${ipParts[2]}`;
-        
-        let completed = 0;
-        const total = 254; // 1-254までスキャン
-        
-        // タイムアウト設定
-        const timeout = setTimeout(() => {
-            resolve(printers);
-        }, 30000); // 30秒でタイムアウト
-        
-        // 各IPアドレスをスキャン
-        for (let i = 1; i <= 254; i++) {
-            const ip = `${baseIp}.${i}`;
-            
-            // ポート9100に接続を試みる
-            const socket = new net.Socket();
-            socket.setTimeout(1000); // 1秒タイムアウト
-            
-            socket.on('connect', () => {
-                printers.push({
-                    ip: ip,
-                    port: 9100,
-                    status: 'online'
-                });
-                socket.destroy();
-            });
-            
-            socket.on('timeout', () => {
-                socket.destroy();
-            });
-            
-            socket.on('error', () => {
-                // 接続失敗（プリンタではない）
-            });
-            
-            socket.on('close', () => {
-                completed++;
-                if (completed === total) {
-                    clearTimeout(timeout);
-                    resolve(printers);
-                }
-            });
-            
-            socket.connect(9100, ip);
-        }
-    });
+    return await scanPrinters();
 });
 
-// アプリ起動時
-app.whenReady().then(() => {
-    createWindow();
-    createTray();
-    
-    // 設定を読み込んでポーリング開始
-    loadConfig();
-    if (config && config.enabled) {
-        startPolling();
+ipcMain.handle('test-connection', async (event, testConfig) => {
+    return await testConnection(testConfig);
+});
+
+ipcMain.handle('add-printer', (event, printer) => {
+    if (!config.printers) {
+        config.printers = [];
     }
+    const newId = config.printers.length > 0 
+        ? Math.max(...config.printers.map(p => p.id)) + 1 
+        : 1;
+    printer.id = newId;
+    config.printers.push(printer);
+    return saveConfig(config);
 });
 
-// すべてのウィンドウが閉じられたとき
-app.on('window-all-closed', () => {
-    // macOS以外ではアプリを終了しない（トレイに常駐）
-    if (process.platform !== 'darwin') {
-        // 何もしない（トレイに常駐）
+ipcMain.handle('update-printer', (event, printer) => {
+    const index = config.printers.findIndex(p => p.id === printer.id);
+    if (index !== -1) {
+        config.printers[index] = printer;
+        return saveConfig(config);
     }
+    return false;
 });
 
-app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-        createWindow();
-    }
-});
-
-// アプリ終了時
-app.on('before-quit', () => {
-    stopPolling();
-});
-
-// 自動起動設定
-app.setLoginItemSettings({
-    openAtLogin: true,
-    openAsHidden: true
+ipcMain.handle('delete-printer', (event, printerId) => {
+    config.printers = config.printers.filter(p => p.id !== printerId);
+    return saveConfig(config);
 });
